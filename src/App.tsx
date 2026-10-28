@@ -80,7 +80,8 @@ function Viewer() {
   const [pinnedEdge, setPinnedEdge] = useState<{ id: string; flow: { x: number; y: number } } | null>(null);
   const canvasRef = useRef<HTMLElement>(null);
   const [focus, setFocus] = useState(false);
-  const [sidebarOpen, setSidebarOpen] = useState(() => load('sv.sidebar') !== 'closed');
+  // On a phone the sidebar is a drawer over the diagram: it starts closed and its state isn't saved
+  const [sidebarOpen, setSidebarOpen] = useState(() => !isPhone() && load('sv.sidebar') !== 'closed');
   // Hiding the details panel keeps the selection (and its highlight); only the panel goes away
   const [detailsOpen, setDetailsOpen] = useState(() => load('sv.details') !== 'closed');
   // Compact layout of just the focused table and its relatives; base positions stay untouched
@@ -96,6 +97,7 @@ function Viewer() {
     setExpanded(new Set());
     setSelectedId(null);
     setPinnedEdge(null);
+    if (isPhone()) setSidebarOpen(false); // show the diagram that was just loaded
   }, []);
 
   const applySql = useCallback(
@@ -153,7 +155,8 @@ function Viewer() {
         })),
       );
       // Let React Flow measure the new nodes before fitting
-      setTimeout(() => fitView({ padding: 0.08, duration: 300 }), 50);
+      // A phone's narrow screen would shrink a wide schema to unreadable; keep it legible and let it pan
+      setTimeout(() => fitView({ padding: 0.08, duration: 300, minZoom: isPhone() ? 0.45 : undefined }), 50);
     },
     [schema, setNodes, fitView],
   );
@@ -185,10 +188,11 @@ function Viewer() {
   const focusTable = useCallback(
     (id: string) => {
       setSelectedId(id);
+      if (isPhone()) setSidebarOpen(false);
       // In focus mode the focus layout effect fits the view instead
-      if (!focus) fitView({ nodes: [{ id }], duration: 400, maxZoom: 1.1 });
+      if (!focus) fitView({ nodes: [{ id }], duration: 400, maxZoom: 1.1, padding: phoneSheetPadding(detailsOpen) });
     },
-    [fitView, focus],
+    [fitView, focus, detailsOpen],
   );
 
   /** In focus mode: the selected table plus every table it references or is referenced by. */
@@ -208,8 +212,11 @@ function Viewer() {
       if (!wasFocused.current) return;
     }
     wasFocused.current = !!focusSet;
-    setTimeout(() => fitView({ padding: 0.15, duration: 300, maxZoom: 1.2 }), 50);
-  }, [focusSet, selectedId, schema, expanded, fitView]);
+    setTimeout(
+      () => fitView({ padding: phoneSheetPadding(detailsOpen) ?? 0.15, duration: 300, maxZoom: 1.2, minZoom: isPhone() ? 0.45 : undefined }),
+      50,
+    );
+  }, [focusSet, selectedId, schema, expanded, fitView, detailsOpen]);
 
   // Drags while focused move the focus layout, not the hidden full-diagram positions
   const handleNodesChange = useCallback(
@@ -233,7 +240,7 @@ function Viewer() {
 
   const toggleSidebar = useCallback(() => {
     setSidebarOpen((open) => {
-      save('sv.sidebar', open ? 'closed' : 'open');
+      if (!isPhone()) save('sv.sidebar', open ? 'closed' : 'open');
       return !open;
     });
   }, []);
@@ -326,6 +333,7 @@ function Viewer() {
   }, [schema, activeId, lineRelation, theme, focusSet, selectedId]);
 
   const trackEdge = (e: React.MouseEvent, id: string) => {
+    if (!canHover()) return; // a tap would leave a hover card stuck open; taps pin instead
     const rect = canvasRef.current!.getBoundingClientRect();
     setHoveredEdge({ id, x: e.clientX - rect.left, y: e.clientY - rect.top });
   };
@@ -381,6 +389,7 @@ function Viewer() {
     <div className={sidebarOpen ? 'app' : 'app app--no-sidebar'}>
       <Sidebar
         open={sidebarOpen}
+        onClose={toggleSidebar}
         schema={schema}
         sourceLabel={sourceLabel}
         sql={sql}
@@ -391,6 +400,7 @@ function Viewer() {
         onImportFile={importFile}
         onConnect={connect}
       />
+      {sidebarOpen && <div className="drawer-backdrop" onClick={toggleSidebar} aria-hidden="true" />}
       <main
         className="canvas"
         ref={canvasRef}
@@ -427,7 +437,7 @@ function Viewer() {
               setSelectedId(n.id);
               setPinnedEdge(null);
             }}
-            onNodeMouseEnter={(_, n) => setHoveredId(n.id)}
+            onNodeMouseEnter={(_, n) => canHover() && setHoveredId(n.id)}
             onNodeMouseLeave={() => setHoveredId(null)}
             onPaneClick={() => {
               setSelectedId(null);
@@ -550,6 +560,20 @@ function Viewer() {
     </div>
   );
 }
+
+/** Matches the phone layout breakpoint in styles.css. */
+const isPhone = () => matchMedia('(max-width: 800px)').matches;
+
+/** Touch screens fire hover on tap and never end it, so hover effects are mouse/trackpad only. */
+const canHover = () => matchMedia('(hover: hover)').matches;
+
+/**
+ * On a phone, while the details bottom sheet is open it covers the lower 60% of the screen and the
+ * toolbar the top, so fit tables into the strip between them.
+ */
+const px = (n: number): `${number}px` => `${n}px`;
+const phoneSheetPadding = (sheetOpen: boolean) =>
+  isPhone() && sheetOpen ? { top: px(110), bottom: px(Math.round(innerHeight * 0.6) + 16), left: px(16), right: px(16) } : undefined;
 
 function relatives(schema: Schema, id: string): Set<string> {
   const set = new Set([id]);

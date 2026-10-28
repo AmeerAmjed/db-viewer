@@ -29,7 +29,9 @@ export default function RelationCard({ schema, relation: r, pinned, onClose, x, 
   };
 
   // Keep the card on screen: flip to the pointer's other side near the right/bottom edge
-  const left = x + OFFSET + CARD_WIDTH > canvasWidth ? x - OFFSET - CARD_WIDTH : x + OFFSET;
+  const flipped = x + OFFSET + CARD_WIDTH > canvasWidth ? x - OFFSET - CARD_WIDTH : x + OFFSET;
+  // On a narrow (phone) canvas neither side may fit: clamp so the card stays fully visible
+  const left = Math.max(8, Math.min(flipped, canvasWidth - CARD_WIDTH - 8));
   const top = y + OFFSET + CARD_HEIGHT > canvasHeight ? Math.max(8, y - OFFSET - CARD_HEIGHT) : y + OFFSET;
 
   return (

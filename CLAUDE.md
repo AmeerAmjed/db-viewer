@@ -32,4 +32,6 @@ There are two schema sources, one model, and one renderer.
 - `src/diagram/TableNode.tsx`: every column always renders its source and target handles (`columnSource` / `columnTarget`). They sit in the header while the table is collapsed and on the row while it is expanded. Edges therefore always target column handles and never reference an unmounted handle. Expansion is toggled through `ToggleTableContext`, not a callback in node data.
 - `src/schema/example.sql`: a small fictional schema in Supabase's "schema for context" export format, loaded via `?raw` by both the app's **Load example** button and the parser tests. Keep real project schemas out of the repo.
 
+Phone layout (≤800px, `isPhone()` in `App.tsx` must match the `@media` breakpoint at the end of `styles.css`): the canvas fills the screen, the sidebar is a drawer that starts closed and closes after picking a table or loading a schema, and the details panel is a bottom sheet (`phoneSheetPadding` fits the selection above it). Hover effects are gated on `canHover()` because touch screens fire hover on tap and never end it; taps pin relation cards instead.
+
 Persistence is `localStorage` only, through `src/storage.ts` (`sv.sql`, `sv.url`, `sv.theme`). API keys are never stored. Theming uses CSS variables on `:root` / `:root[data-theme='dark']`. The PNG export background reads `--canvas`.

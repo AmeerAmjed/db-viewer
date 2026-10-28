@@ -2,12 +2,13 @@ import { useEffect, useMemo, useRef, useState, type DragEvent, type FormEvent } 
 import type { Schema } from '../schema/model';
 import { CAN_CONNECT } from '../env';
 import { load } from '../storage';
-import { Logo } from './icons';
+import { CloseIcon, Logo } from './icons';
 
 type Tab = 'tables' | 'sql' | 'connect';
 
 interface Props {
   open: boolean;
+  onClose: () => void;
   schema: Schema;
   sourceLabel: string;
   sql: string;
@@ -36,6 +37,10 @@ export default function Sidebar(props: Props) {
         <h1>
           <Logo size={22} />
           DB Viewer
+          {/* Only shown on phones, where the sidebar is a drawer */}
+          <button className="icon-btn sidebar-close" onClick={props.onClose} aria-label="Close sidebar">
+            <CloseIcon />
+          </button>
         </h1>
         <p className="muted">
           {own} tables · {schema.relations.length} relations · from {sourceLabel}

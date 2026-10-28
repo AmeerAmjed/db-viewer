@@ -99,24 +99,6 @@ code,
   --xy-background-color: var(--canvas);
 }
 
-@media (max-width: 800px) {
-  .app {
-    grid-template-columns: 1fr;
-    grid-template-rows: auto 1fr auto;
-  }
-  .app--no-sidebar {
-    grid-template-rows: 1fr auto;
-  }
-  .sidebar {
-    max-height: 40vh;
-  }
-  .detail {
-    width: auto !important;
-    max-height: 45vh;
-    border-left: 0 !important;
-    border-top: 1px solid var(--border);
-  }
-}
 
 /* ---------------------------------------------------------------- controls */
 
@@ -839,4 +821,110 @@ button.badge--fk {
 .rel svg {
   flex-shrink: 0;
   color: var(--muted);
+}
+
+/* ---------------------------------------------------------------- phone layout (isPhone() in App.tsx) */
+
+.drawer-backdrop,
+.sidebar-close {
+  display: none;
+}
+
+@media (max-width: 800px) {
+  /* The diagram fills the screen; sidebar and details float over it */
+  .app,
+  .app--no-sidebar {
+    display: block;
+    position: relative;
+  }
+
+  .canvas {
+    position: absolute;
+    inset: 0;
+  }
+
+  .sidebar {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 60;
+    width: min(320px, 88vw);
+    box-shadow: 8px 0 32px rgba(0, 0, 0, 0.4);
+  }
+
+  .drawer-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 55;
+    background: rgba(0, 0, 0, 0.45);
+  }
+
+  .sidebar-close {
+    display: inline-grid;
+    margin-left: auto;
+  }
+
+  /* Table details become a bottom sheet */
+  .detail {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 45;
+    width: auto;
+    max-height: 60vh;
+    border-left: 0;
+    border-top: 1px solid var(--border);
+    border-radius: 16px 16px 0 0;
+    box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.35);
+  }
+
+  /* Toolbar: compact, wraps right-aligned without covering the sidebar button */
+  .toolbar {
+    max-width: calc(100vw - 72px);
+    gap: 4px;
+  }
+
+  .toolbar .btn {
+    padding: 5px 9px;
+    font-size: 13px;
+  }
+
+  .toolbar .icon-btn {
+    width: 30px;
+    height: 30px;
+  }
+
+  .react-flow__minimap {
+    display: none;
+  }
+
+  /* Legend sits bottom-right, clear of the zoom controls */
+  .legend.react-flow__panel {
+    left: auto;
+    right: 0;
+    transform: none;
+    gap: 10px;
+    padding: 2px 8px;
+  }
+
+  .legend .muted {
+    display: none;
+  }
+
+  .empty,
+  .toast {
+    max-width: calc(100vw - 32px);
+    box-sizing: border-box;
+  }
+
+  .empty {
+    margin-top: 120px;
+  }
+
+  .toast {
+    top: 120px;
+  }
 }
