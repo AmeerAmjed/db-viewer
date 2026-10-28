@@ -388,6 +388,33 @@ code,
   pointer-events: none;
 }
 
+.rel-card--pinned {
+  border-color: var(--accent);
+  pointer-events: auto;
+}
+
+.rel-card-close {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  margin: -4px -6px -4px auto;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.rel-card-close:hover {
+  background: var(--node-head);
+  color: var(--text);
+}
+
+.react-flow__edge {
+  cursor: pointer;
+}
+
 .rel-card-head {
   display: flex;
   align-items: center;

@@ -8,6 +8,7 @@ import {
   ReactFlowProvider,
   useNodesState,
   useReactFlow,
+  useViewport,
   type NodeChange,
   type NodePositionChange,
 } from '@xyflow/react';
@@ -53,7 +54,8 @@ export default function App() {
 
 function Viewer() {
   const [theme, toggleTheme] = useTheme();
-  const { fitView } = useReactFlow();
+  const { fitView, screenToFlowPosition, flowToScreenPosition } = useReactFlow();
+  useViewport(); // re-render on pan/zoom so a pinned card follows its line
 
   const [sql, setSql] = useState(() => load('sv.sql') ?? '');
   const [schema, setSchema] = useState<Schema>(() => parseSql(sql));
@@ -62,6 +64,8 @@ function Viewer() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [hoveredEdge, setHoveredEdge] = useState<{ id: string; x: number; y: number } | null>(null);
+  // A clicked line stays lit with its card open; anchored in flow coordinates so it survives pan/zoom
+  const [pinnedEdge, setPinnedEdge] = useState<{ id: string; flow: { x: number; y: number } } | null>(null);
   const canvasRef = useRef<HTMLElement>(null);
   const [focus, setFocus] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(() => load('sv.sidebar') !== 'closed');
@@ -79,6 +83,7 @@ function Viewer() {
     setSourceLabel(label);
     setExpanded(new Set());
     setSelectedId(null);
+    setPinnedEdge(null);
   }, []);
 
   const applySql = useCallback(
@@ -209,6 +214,7 @@ function Viewer() {
       if (e.key === 'f' || e.key === 'F') setFocus((f) => !f);
       if (e.key === '[') toggleSidebar();
       if (e.key === ']') toggleDetails();
+      if (e.key === 'Escape') setPinnedEdge(null);
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -225,21 +231,26 @@ function Viewer() {
 
   const activeId = hoveredId ?? selectedId;
   const hoveredRelation = hoveredEdge ? schema.relations.find((r) => r.id === hoveredEdge.id) : undefined;
+  const pinnedRelation = pinnedEdge ? schema.relations.find((r) => r.id === pinnedEdge.id) : undefined;
+  // Focus mode can hide the pinned line; its card goes with it
+  const pinnedVisible = !!pinnedRelation && (!focusSet || pinnedRelation.from === selectedId || pinnedRelation.to === selectedId);
+  // The line being inspected: hovering another line temporarily wins over the pinned one
+  const lineRelation = hoveredRelation ?? (pinnedVisible ? pinnedRelation : undefined);
   // A hovered line outranks a hovered/selected table: only its two tables stay lit
   const neighbours = useMemo(
     () =>
-      hoveredRelation ? new Set([hoveredRelation.from, hoveredRelation.to]) : activeId ? relatives(schema, activeId) : null,
-    [hoveredRelation, activeId, schema],
+      lineRelation ? new Set([lineRelation.from, lineRelation.to]) : activeId ? relatives(schema, activeId) : null,
+    [lineRelation, activeId, schema],
   );
 
   const viewNodes = useMemo(
     () =>
       nodes.map((n) => {
         const highlight =
-          hoveredRelation && n.id === hoveredRelation.from
-            ? new Set(hoveredRelation.fromColumns)
-            : hoveredRelation && n.id === hoveredRelation.to
-              ? new Set(hoveredRelation.toColumns)
+          lineRelation && n.id === lineRelation.from
+            ? new Set(lineRelation.fromColumns)
+            : lineRelation && n.id === lineRelation.to
+              ? new Set(lineRelation.toColumns)
               : NO_COLUMNS;
         return {
           ...n,
@@ -248,21 +259,21 @@ function Viewer() {
           data: {
             ...n.data,
             expanded: expanded.has(n.id),
-            active: hoveredRelation ? neighbours!.has(n.id) : n.id === activeId,
+            active: lineRelation ? neighbours!.has(n.id) : n.id === activeId,
             dimmed: !!neighbours && !neighbours.has(n.id),
             fkColumns: fkColumns.get(n.id) ?? NO_COLUMNS,
             highlightColumns: highlight,
           },
         };
       }),
-    [nodes, expanded, activeId, hoveredRelation, neighbours, fkColumns, focusSet, focusPositions],
+    [nodes, expanded, activeId, lineRelation, neighbours, fkColumns, focusSet, focusPositions],
   );
 
   const edges = useMemo<RelationEdgeType[]>(() => {
     const colors = EDGE_COLORS[theme];
     return schema.relations.map((r) => {
-      const lit = hoveredRelation ? r.id === hoveredRelation.id : !!activeId && (r.from === activeId || r.to === activeId);
-      const anyLit = !!hoveredRelation || !!activeId;
+      const lit = lineRelation ? r.id === lineRelation.id : !!activeId && (r.from === activeId || r.to === activeId);
+      const anyLit = !!lineRelation || !!activeId;
       const state = lit ? 'active' : 'idle';
       return {
         id: r.id,
@@ -272,7 +283,7 @@ function Viewer() {
         targetHandle: r.toColumns.length ? columnTarget(r.toColumns[0]) : HEADER_TARGET,
         type: 'relation',
         className: lit ? 'edge--active' : anyLit ? 'edge--dimmed' : undefined,
-        style: { stroke: colors[state], strokeWidth: r.id === hoveredRelation?.id ? 3 : lit ? 2 : 1.25 },
+        style: { stroke: colors[state], strokeWidth: r.id === lineRelation?.id ? 3 : lit ? 2 : 1.25 },
         markerStart: markerId(r.kind === 'one-to-one' ? 'one' : 'many', state),
         markerEnd: markerId('one', state),
         interactionWidth: 24,
@@ -281,7 +292,7 @@ function Viewer() {
         hidden: !!focusSet && r.from !== selectedId && r.to !== selectedId,
       };
     });
-  }, [schema, activeId, hoveredRelation, theme, focusSet, selectedId]);
+  }, [schema, activeId, lineRelation, theme, focusSet, selectedId]);
 
   const trackEdge = (e: React.MouseEvent, id: string) => {
     const rect = canvasRef.current!.getBoundingClientRect();
@@ -289,6 +300,14 @@ function Viewer() {
   };
 
   const selected = schema.tables.find((t) => t.id === selectedId);
+
+  const cardPosition = (() => {
+    if (hoveredRelation && hoveredEdge) return hoveredEdge;
+    if (!lineRelation || !pinnedEdge || !canvasRef.current) return null;
+    const rect = canvasRef.current.getBoundingClientRect();
+    const p = flowToScreenPosition(pinnedEdge.flow);
+    return { x: p.x - rect.left, y: p.y - rect.top };
+  })();
 
   return (
     <div className={sidebarOpen ? 'app' : 'app app--no-sidebar'}>
@@ -310,10 +329,19 @@ function Viewer() {
             nodeTypes={nodeTypes}
             edgeTypes={edgeTypes}
             onNodesChange={handleNodesChange}
-            onNodeClick={(_, n) => setSelectedId(n.id)}
+            onNodeClick={(_, n) => {
+              setSelectedId(n.id);
+              setPinnedEdge(null);
+            }}
             onNodeMouseEnter={(_, n) => setHoveredId(n.id)}
             onNodeMouseLeave={() => setHoveredId(null)}
-            onPaneClick={() => setSelectedId(null)}
+            onPaneClick={() => {
+              setSelectedId(null);
+              setPinnedEdge(null);
+            }}
+            onEdgeClick={(e, edge) =>
+              setPinnedEdge((p) => (p?.id === edge.id ? null : { id: edge.id, flow: screenToFlowPosition({ x: e.clientX, y: e.clientY }) }))
+            }
             onEdgeMouseEnter={(e, edge) => trackEdge(e, edge.id)}
             onEdgeMouseMove={(e, edge) => trackEdge(e, edge.id)}
             onEdgeMouseLeave={() => setHoveredEdge(null)}
@@ -384,7 +412,7 @@ function Viewer() {
               <span>
                 <MarkerSample end="one" /> one
               </span>
-              <span className="muted">hover a line for details</span>
+              <span className="muted">hover or click a line for details</span>
             </Panel>
             {focus && !selectedId && schema.tables.length > 0 && (
               <Panel position="top-center" className="empty">
@@ -398,12 +426,14 @@ function Viewer() {
             )}
           </ReactFlow>
         </ToggleTableContext.Provider>
-        {hoveredRelation && hoveredEdge && (
+        {lineRelation && cardPosition && (
           <RelationCard
             schema={schema}
-            relation={hoveredRelation}
-            x={hoveredEdge.x}
-            y={hoveredEdge.y}
+            relation={lineRelation}
+            pinned={!hoveredRelation}
+            onClose={() => setPinnedEdge(null)}
+            x={cardPosition.x}
+            y={cardPosition.y}
             canvasWidth={canvasRef.current?.clientWidth ?? 0}
             canvasHeight={canvasRef.current?.clientHeight ?? 0}
           />
