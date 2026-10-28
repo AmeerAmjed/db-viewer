@@ -2,20 +2,21 @@ import {
   Background,
   BackgroundVariant,
   Controls,
-  MarkerType,
   MiniMap,
   Panel,
   ReactFlow,
   ReactFlowProvider,
   useNodesState,
   useReactFlow,
-  type Edge,
   type NodeChange,
   type NodePositionChange,
 } from '@xyflow/react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { exportDiagram } from './diagram/exportImage';
 import { layoutSchema } from './diagram/layout';
+import RelationCard from './diagram/RelationCard';
+import RelationEdge, { type RelationEdgeType } from './diagram/RelationEdge';
+import { MarkerSample, markerId, RelationMarkers } from './diagram/RelationMarkers';
 import TableNode, {
   columnSource,
   columnTarget,
@@ -34,7 +35,10 @@ import Sidebar from './ui/Sidebar';
 import { useTheme } from './ui/useTheme';
 
 const nodeTypes = { table: TableNode };
+const edgeTypes = { relation: RelationEdge };
 const NO_COLUMNS: ReadonlySet<string> = new Set();
+// Edge colours are passed inline rather than via CSS variables: SVG strokes and fills set from
+// variables are lost when html-to-image exports the diagram.
 const EDGE_COLORS = {
   light: { idle: '#a1a1aa', active: '#16a34a' },
   dark: { idle: '#52525b', active: '#3ecf8e' },
@@ -58,6 +62,8 @@ function Viewer() {
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
+  const [hoveredEdge, setHoveredEdge] = useState<{ id: string; x: number; y: number } | null>(null);
+  const canvasRef = useRef<HTMLElement>(null);
   const [focus, setFocus] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(() => load('sv.sidebar') !== 'closed');
   // Compact layout of just the focused table and its relatives; base positions stay untouched
@@ -106,7 +112,7 @@ function Viewer() {
           id: table.id,
           type: 'table',
           position: positions[table.id],
-          data: { table, expanded: false, dimmed: false, active: false, fkColumns: NO_COLUMNS },
+          data: { table, expanded: false, dimmed: false, active: false, fkColumns: NO_COLUMNS, highlightColumns: NO_COLUMNS },
         })),
       );
       // Let React Flow measure the new nodes before fitting
@@ -209,49 +215,69 @@ function Viewer() {
   }, [schema]);
 
   const activeId = hoveredId ?? selectedId;
-  const neighbours = useMemo(() => (activeId ? relatives(schema, activeId) : null), [activeId, schema]);
+  const hoveredRelation = hoveredEdge ? schema.relations.find((r) => r.id === hoveredEdge.id) : undefined;
+  // A hovered line outranks a hovered/selected table: only its two tables stay lit
+  const neighbours = useMemo(
+    () =>
+      hoveredRelation ? new Set([hoveredRelation.from, hoveredRelation.to]) : activeId ? relatives(schema, activeId) : null,
+    [hoveredRelation, activeId, schema],
+  );
 
   const viewNodes = useMemo(
     () =>
-      nodes.map((n) => ({
-        ...n,
-        position: focusPositions?.[n.id] ?? n.position,
-        hidden: !!focusSet && !focusSet.has(n.id),
-        data: {
-          ...n.data,
-          expanded: expanded.has(n.id),
-          active: n.id === activeId,
-          dimmed: !!neighbours && !neighbours.has(n.id),
-          fkColumns: fkColumns.get(n.id) ?? NO_COLUMNS,
-        },
-      })),
-    [nodes, expanded, activeId, neighbours, fkColumns, focusSet, focusPositions],
+      nodes.map((n) => {
+        const highlight =
+          hoveredRelation && n.id === hoveredRelation.from
+            ? new Set(hoveredRelation.fromColumns)
+            : hoveredRelation && n.id === hoveredRelation.to
+              ? new Set(hoveredRelation.toColumns)
+              : NO_COLUMNS;
+        return {
+          ...n,
+          position: focusPositions?.[n.id] ?? n.position,
+          hidden: !!focusSet && !focusSet.has(n.id),
+          data: {
+            ...n.data,
+            expanded: expanded.has(n.id),
+            active: hoveredRelation ? neighbours!.has(n.id) : n.id === activeId,
+            dimmed: !!neighbours && !neighbours.has(n.id),
+            fkColumns: fkColumns.get(n.id) ?? NO_COLUMNS,
+            highlightColumns: highlight,
+          },
+        };
+      }),
+    [nodes, expanded, activeId, hoveredRelation, neighbours, fkColumns, focusSet, focusPositions],
   );
 
-  const edges = useMemo<Edge[]>(() => {
+  const edges = useMemo<RelationEdgeType[]>(() => {
     const colors = EDGE_COLORS[theme];
     return schema.relations.map((r) => {
-      const touches = !!activeId && (r.from === activeId || r.to === activeId);
-      const color = touches ? colors.active : colors.idle;
+      const lit = hoveredRelation ? r.id === hoveredRelation.id : !!activeId && (r.from === activeId || r.to === activeId);
+      const anyLit = !!hoveredRelation || !!activeId;
+      const state = lit ? 'active' : 'idle';
       return {
         id: r.id,
         source: r.from,
         target: r.to,
         sourceHandle: columnSource(r.fromColumns[0]),
         targetHandle: r.toColumns.length ? columnTarget(r.toColumns[0]) : HEADER_TARGET,
-        type: 'smoothstep',
-        animated: touches,
-        // A self-reference's label would sit on top of the table's own header
-        label: touches && r.from !== r.to ? `${r.fromColumns.join(', ')} → ${r.toColumns.join(', ')}` : undefined,
-        className: touches ? 'edge--active' : activeId ? 'edge--dimmed' : undefined,
-        style: { stroke: color, strokeWidth: touches ? 2 : 1.25 },
-        markerEnd: { type: MarkerType.ArrowClosed, color, width: 14, height: 14 },
-        zIndex: touches ? 1 : 0,
+        type: 'relation',
+        className: lit ? 'edge--active' : anyLit ? 'edge--dimmed' : undefined,
+        style: { stroke: colors[state], strokeWidth: r.id === hoveredRelation?.id ? 3 : lit ? 2 : 1.25 },
+        markerStart: markerId(r.kind === 'one-to-one' ? 'one' : 'many', state),
+        markerEnd: markerId('one', state),
+        interactionWidth: 24,
+        zIndex: lit ? 1 : 0,
         // Focus mode shows only the focused table's own relations
         hidden: !!focusSet && r.from !== selectedId && r.to !== selectedId,
       };
     });
-  }, [schema, activeId, theme, focusSet, selectedId]);
+  }, [schema, activeId, hoveredRelation, theme, focusSet, selectedId]);
+
+  const trackEdge = (e: React.MouseEvent, id: string) => {
+    const rect = canvasRef.current!.getBoundingClientRect();
+    setHoveredEdge({ id, x: e.clientX - rect.left, y: e.clientY - rect.top });
+  };
 
   const selected = schema.tables.find((t) => t.id === selectedId);
 
@@ -268,22 +294,27 @@ function Viewer() {
         onLoadSample={() => applySql(sample)}
         onConnect={connect}
       />
-      <main className="canvas">
+      <main className="canvas" ref={canvasRef}>
         <ToggleTableContext.Provider value={toggleTable}>
           <ReactFlow
             nodes={viewNodes}
             edges={edges}
             nodeTypes={nodeTypes}
+            edgeTypes={edgeTypes}
             onNodesChange={handleNodesChange}
             onNodeClick={(_, n) => setSelectedId(n.id)}
             onNodeMouseEnter={(_, n) => setHoveredId(n.id)}
             onNodeMouseLeave={() => setHoveredId(null)}
             onPaneClick={() => setSelectedId(null)}
+            onEdgeMouseEnter={(e, edge) => trackEdge(e, edge.id)}
+            onEdgeMouseMove={(e, edge) => trackEdge(e, edge.id)}
+            onEdgeMouseLeave={() => setHoveredEdge(null)}
             nodesConnectable={false}
             edgesFocusable={false}
             colorMode={theme}
             minZoom={0.05}
           >
+            <RelationMarkers colors={EDGE_COLORS[theme]} />
             <Background variant={BackgroundVariant.Dots} gap={20} size={1} />
             <Controls showInteractive={false} />
             <MiniMap pannable zoomable nodeColor={(n) => (neighbours?.has(n.id) ? EDGE_COLORS[theme].active : EDGE_COLORS[theme].idle)} />
@@ -326,6 +357,15 @@ function Viewer() {
                 {theme === 'dark' ? <SunIcon /> : <MoonIcon />}
               </button>
             </Panel>
+            <Panel position="bottom-center" className="legend">
+              <span>
+                <MarkerSample end="many" /> many
+              </span>
+              <span>
+                <MarkerSample end="one" /> one
+              </span>
+              <span className="muted">hover a line for details</span>
+            </Panel>
             {focus && !selectedId && schema.tables.length > 0 && (
               <Panel position="top-center" className="empty">
                 Focus mode: select a table to show only it and its related tables.
@@ -338,6 +378,16 @@ function Viewer() {
             )}
           </ReactFlow>
         </ToggleTableContext.Provider>
+        {hoveredRelation && hoveredEdge && (
+          <RelationCard
+            schema={schema}
+            relation={hoveredRelation}
+            x={hoveredEdge.x}
+            y={hoveredEdge.y}
+            canvasWidth={canvasRef.current?.clientWidth ?? 0}
+            canvasHeight={canvasRef.current?.clientHeight ?? 0}
+          />
+        )}
       </main>
       {selected && (
         <DetailPanel

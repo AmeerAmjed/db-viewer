@@ -24,7 +24,8 @@ export function layoutSchema(schema: Schema, expanded: ReadonlySet<string>): Rec
   }
 
   const g = new Graph();
-  g.setGraph({ rankdir: 'LR', nodesep: 32, ranksep: 140, marginx: 0, marginy: 0 });
+  // ranksep leaves room for a relation label plus the crow's-foot markers at both ends
+  g.setGraph({ rankdir: 'LR', nodesep: 32, ranksep: 200, marginx: 0, marginy: 0 });
   g.setDefaultEdgeLabel(() => ({}));
   for (const t of schema.tables) {
     if (connected.has(t.id)) g.setNode(t.id, { width: NODE_WIDTH, height: nodeHeight(t, expanded.has(t.id)) });

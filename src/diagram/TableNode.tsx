@@ -10,6 +10,8 @@ export type TableNodeData = {
   dimmed: boolean;
   active: boolean;
   fkColumns: ReadonlySet<string>;
+  /** Columns of the hovered relation, tinted while its line is hovered. */
+  highlightColumns: ReadonlySet<string>;
 };
 export type TableNodeType = Node<TableNodeData, 'table'>;
 
@@ -32,7 +34,7 @@ const ColumnHandles = ({ column }: { column: string }) => (
 );
 
 function TableNode({ id, data }: NodeProps<TableNodeType>) {
-  const { table, expanded, dimmed, active, fkColumns } = data;
+  const { table, expanded, dimmed, active, fkColumns, highlightColumns } = data;
   const toggle = useContext(ToggleTableContext);
   const updateNodeInternals = useUpdateNodeInternals();
 
@@ -69,7 +71,7 @@ function TableNode({ id, data }: NodeProps<TableNodeType>) {
       {expanded && (
         <div className="tn-body">
           {table.columns.map((c) => (
-            <div className="tn-row" key={c.name}>
+            <div className={highlightColumns.has(c.name) ? 'tn-row tn-row--hl' : 'tn-row'} key={c.name}>
               <ColumnHandles column={c.name} />
               <ColumnIcon column={c} foreign={fkColumns.has(c.name)} />
               <span className="tn-col">{c.name}</span>
