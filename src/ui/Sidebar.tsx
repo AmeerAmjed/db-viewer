@@ -2,6 +2,7 @@ import { useMemo, useRef, useState, type DragEvent, type FormEvent } from 'react
 import type { Schema } from '../schema/model';
 import { CAN_CONNECT } from '../env';
 import { load } from '../storage';
+import { Logo } from './icons';
 
 type Tab = 'tables' | 'sql' | 'connect';
 
@@ -27,7 +28,10 @@ export default function Sidebar(props: Props) {
     // Hidden rather than unmounted so the search, SQL draft and connect form survive toggling
     <aside className="sidebar" hidden={!props.open}>
       <header className="sidebar-head">
-        <h1>DB Viewer</h1>
+        <h1>
+          <Logo size={22} />
+          DB Viewer
+        </h1>
         <p className="muted">
           {own} tables · {schema.relations.length} relations · from {sourceLabel}
         </p>

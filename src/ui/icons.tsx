@@ -84,3 +84,15 @@ export const DetailsPanelIcon = () => (
     <path d="M15 4v16" />
   </Svg>
 );
+
+/** The app's logo, same artwork as public/favicon.svg. */
+export const Logo = ({ size = 24 }: { size?: number }) => (
+  <svg width={size} height={size} viewBox="0 0 64 64" aria-hidden="true">
+    <rect width="64" height="64" rx="14" fill="#121212" />
+    <rect x="7" y="10" width="24" height="18" rx="3.5" fill="#1f1f1f" stroke="#3ecf8e" strokeWidth="2.5" />
+    <path d="M7 17.5h24" stroke="#3ecf8e" strokeWidth="2.5" />
+    <rect x="33" y="36" width="24" height="18" rx="3.5" fill="#1f1f1f" stroke="#3ecf8e" strokeWidth="2.5" />
+    <path d="M33 43.5h24" stroke="#3ecf8e" strokeWidth="2.5" />
+    <path d="M31 21h7a4 4 0 0 1 4 4v11M38 31h8" fill="none" stroke="#3ecf8e" strokeWidth="2.5" strokeLinecap="round" />
+  </svg>
+);
