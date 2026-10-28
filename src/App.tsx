@@ -26,6 +26,7 @@ import TableNode, {
   type TableNodeType,
 } from './diagram/TableNode';
 import type { Schema } from './schema/model';
+import example from './schema/example.sql?raw';
 import { parseOpenApi } from './schema/openApi';
 import { parseSql } from './schema/sqlParser';
 import { load, save } from './storage';
@@ -87,10 +88,10 @@ function Viewer() {
   }, []);
 
   const applySql = useCallback(
-    (text: string) => {
+    (text: string, label = 'pasted SQL') => {
       setSql(text);
       save('sv.sql', text);
-      showSchema(parseSql(text), 'pasted SQL');
+      showSchema(parseSql(text), label);
     },
     [showSchema],
   );
@@ -319,6 +320,7 @@ function Viewer() {
         selectedId={selectedId}
         onSelect={focusTable}
         onApplySql={applySql}
+        onLoadExample={() => applySql(example, 'example')}
         onConnect={connect}
       />
       <main className="canvas" ref={canvasRef}>
@@ -421,7 +423,11 @@ function Viewer() {
             )}
             {!schema.tables.length && (
               <Panel position="top-center" className="empty">
-                No tables found. Paste SQL or connect a Supabase project from the sidebar.
+                No tables found. Paste SQL or connect a Supabase project from the sidebar, or{' '}
+                <button className="link-btn" onClick={() => applySql(example, 'example')}>
+                  load an example
+                </button>
+                .
               </Panel>
             )}
           </ReactFlow>

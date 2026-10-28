@@ -340,6 +340,15 @@ code,
   justify-content: flex-end;
 }
 
+.link-btn {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
 .empty {
   /* top-center would otherwise sit on the toolbar */
   margin-top: 64px;

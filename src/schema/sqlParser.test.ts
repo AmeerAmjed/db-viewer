@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import sample from './fixture.sql?raw';
+import sample from './example.sql?raw';
 import { parseOpenApi } from './openApi';
 import { parseSql } from './sqlParser';
 

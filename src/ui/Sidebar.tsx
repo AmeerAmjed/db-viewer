@@ -12,6 +12,7 @@ interface Props {
   selectedId: string | null;
   onSelect: (id: string) => void;
   onApplySql: (sql: string) => void;
+  onLoadExample: () => void;
   onConnect: (url: string, key: string) => Promise<void>;
 }
 
@@ -43,6 +44,10 @@ export default function Sidebar(props: Props) {
           {...props}
           onApplySql={(sql) => {
             props.onApplySql(sql);
+            setTab('tables');
+          }}
+          onLoadExample={() => {
+            props.onLoadExample();
             setTab('tables');
           }}
         />
@@ -108,7 +113,7 @@ function TablesTab({ schema, selectedId, onSelect }: Props) {
   );
 }
 
-function SqlTab({ sql, schema, onApplySql }: Props) {
+function SqlTab({ sql, schema, onApplySql, onLoadExample }: Props) {
   const [draft, setDraft] = useState(sql);
   return (
     <div className="tab-body">
@@ -130,6 +135,9 @@ function SqlTab({ sql, schema, onApplySql }: Props) {
       <div className="row">
         <button className="btn btn--primary" onClick={() => onApplySql(draft)}>
           Visualize
+        </button>
+        <button className="btn" onClick={onLoadExample} title="A small made-up blog schema">
+          Load example
         </button>
         <button className="btn" onClick={() => setDraft('')}>
           Clear
