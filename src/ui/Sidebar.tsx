@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState, type DragEvent, type FormEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type DragEvent, type FormEvent } from 'react';
 import type { Schema } from '../schema/model';
 import { CAN_CONNECT } from '../env';
 import { load } from '../storage';
@@ -23,6 +23,11 @@ export default function Sidebar(props: Props) {
   const { schema, sourceLabel } = props;
   const [tab, setTab] = useState<Tab>(() => (schema.tables.length ? 'tables' : 'sql'));
   const own = schema.tables.filter((t) => !t.external).length;
+
+  // A newly loaded schema (from any source, e.g. the diagram's "load an example" link) shows its tables
+  useEffect(() => {
+    if (schema.tables.length) setTab('tables');
+  }, [schema]);
 
   return (
     // Hidden rather than unmounted so the search, SQL draft and connect form survive toggling
