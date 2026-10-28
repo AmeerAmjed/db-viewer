@@ -12,7 +12,6 @@ interface Props {
   selectedId: string | null;
   onSelect: (id: string) => void;
   onApplySql: (sql: string) => void;
-  onLoadSample: () => void;
   onConnect: (url: string, key: string) => Promise<void>;
 }
 
@@ -44,10 +43,6 @@ export default function Sidebar(props: Props) {
           {...props}
           onApplySql={(sql) => {
             props.onApplySql(sql);
-            setTab('tables');
-          }}
-          onLoadSample={() => {
-            props.onLoadSample();
             setTab('tables');
           }}
         />
@@ -113,7 +108,7 @@ function TablesTab({ schema, selectedId, onSelect }: Props) {
   );
 }
 
-function SqlTab({ sql, schema, onApplySql, onLoadSample }: Props) {
+function SqlTab({ sql, schema, onApplySql }: Props) {
   const [draft, setDraft] = useState(sql);
   return (
     <div className="tab-body">
@@ -135,9 +130,6 @@ function SqlTab({ sql, schema, onApplySql, onLoadSample }: Props) {
       <div className="row">
         <button className="btn btn--primary" onClick={() => onApplySql(draft)}>
           Visualize
-        </button>
-        <button className="btn" onClick={onLoadSample}>
-          Load sample
         </button>
         <button className="btn" onClick={() => setDraft('')}>
           Clear

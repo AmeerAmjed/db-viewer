@@ -24,7 +24,6 @@ import TableNode, {
   ToggleTableContext,
   type TableNodeType,
 } from './diagram/TableNode';
-import sample from './sample.sql?raw';
 import type { Schema } from './schema/model';
 import { parseOpenApi } from './schema/openApi';
 import { parseSql } from './schema/sqlParser';
@@ -56,7 +55,7 @@ function Viewer() {
   const [theme, toggleTheme] = useTheme();
   const { fitView } = useReactFlow();
 
-  const [sql, setSql] = useState(() => load('sv.sql') ?? sample);
+  const [sql, setSql] = useState(() => load('sv.sql') ?? '');
   const [schema, setSchema] = useState<Schema>(() => parseSql(sql));
   const [sourceLabel, setSourceLabel] = useState('pasted SQL');
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
@@ -301,7 +300,6 @@ function Viewer() {
         selectedId={selectedId}
         onSelect={focusTable}
         onApplySql={applySql}
-        onLoadSample={() => applySql(sample)}
         onConnect={connect}
       />
       <main className="canvas" ref={canvasRef}>
