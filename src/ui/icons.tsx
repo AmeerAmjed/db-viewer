@@ -89,10 +89,9 @@ export const DetailsPanelIcon = () => (
 export const Logo = ({ size = 24 }: { size?: number }) => (
   <svg width={size} height={size} viewBox="0 0 64 64" aria-hidden="true">
     <rect width="64" height="64" rx="14" fill="#121212" />
-    <rect x="7" y="10" width="24" height="18" rx="3.5" fill="#1f1f1f" stroke="#3ecf8e" strokeWidth="2.5" />
-    <path d="M7 17.5h24" stroke="#3ecf8e" strokeWidth="2.5" />
-    <rect x="33" y="36" width="24" height="18" rx="3.5" fill="#1f1f1f" stroke="#3ecf8e" strokeWidth="2.5" />
-    <path d="M33 43.5h24" stroke="#3ecf8e" strokeWidth="2.5" />
-    <path d="M31 21h7a4 4 0 0 1 4 4v11M38 31h8" fill="none" stroke="#3ecf8e" strokeWidth="2.5" strokeLinecap="round" />
+    <rect x="11" y="13" width="42" height="38" rx="5" fill="#1f1f1f" stroke="#3ecf8e" strokeWidth="3" />
+    <path d="M11 18a5 5 0 0 1 5-5h32a5 5 0 0 1 5 5v6H11z" fill="#3ecf8e" />
+    <path d="M11 33h42M11 42h42M25 24v27" stroke="#3ecf8e" strokeWidth="2.5" />
+    <circle cx="18" cy="28.5" r="2" fill="#facc15" />
   </svg>
 );
