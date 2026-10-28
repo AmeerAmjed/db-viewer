@@ -19,9 +19,16 @@ export interface Table {
   external: boolean;
 }
 
+/**
+ * Seen from the referencing side: many rows may point at one target row, unless the FK columns
+ * are themselves unique (single-column UNIQUE, or exactly the primary key), making it 1:1.
+ */
+export type RelationKind = 'many-to-one' | 'one-to-one';
+
 export interface Relation {
   id: string;
   name?: string;
+  kind: RelationKind;
   from: string;
   fromColumns: string[];
   to: string;
@@ -93,6 +100,7 @@ export function buildSchema(tables: Map<string, Table>, fks: PendingForeignKey[]
     relations.push({
       id: n ? `${key}#${n}` : key,
       name: fk.name,
+      kind: relationKind(tables.get(fk.from)!, fk.fromColumns),
       from: fk.from,
       fromColumns: fk.fromColumns,
       to,
@@ -102,6 +110,16 @@ export function buildSchema(tables: Map<string, Table>, fks: PendingForeignKey[]
 
   return { tables: [...tables.values()], relations, warnings };
 }
+
+function relationKind(table: Table, fromColumns: string[]): RelationKind {
+  const pk = table.columns.filter((c) => c.primary).map((c) => c.name);
+  const isPk = pk.length === fromColumns.length && fromColumns.every((c) => pk.includes(c));
+  const isUnique = fromColumns.length === 1 && !!table.columns.find((c) => c.name === fromColumns[0])?.unique;
+  return isPk || isUnique ? 'one-to-one' : 'many-to-one';
+}
+
+/** Short label, from the referencing side when `from` is true and from the target side otherwise. */
+export const kindLabel = (kind: RelationKind, from = true) => (kind === 'one-to-one' ? '1:1' : from ? 'N:1' : '1:N');
 
 /** Column names of `table` that take part in an outgoing foreign key. */
 export function foreignKeyColumns(schema: Schema, table: string): Set<string> {

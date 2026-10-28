@@ -47,6 +47,14 @@ describe('parseSql on a Supabase-style export', () => {
     expect(from('public.post_tags').map((r) => r.to).sort()).toEqual(['public.posts', 'public.tags']);
     expect(new Set(schema.relations.map((r) => r.id)).size).toBe(schema.relations.length);
   });
+
+  it('classifies relations as one-to-one when the FK columns are unique or the primary key', () => {
+    const kind = (from: string, col: string) => schema.relations.find((r) => r.from === from && r.fromColumns[0] === col)!.kind;
+    expect(kind('public.posts', 'author_id')).toBe('many-to-one');
+    expect(kind('public.post_stats', 'post_id')).toBe('one-to-one'); // PK
+    expect(kind('public.authors', 'user_id')).toBe('one-to-one'); // UNIQUE
+    expect(kind('public.post_tags', 'post_id')).toBe('many-to-one'); // part of a composite PK
+  });
 });
 
 describe('parseSql on other dialects', () => {

@@ -1,4 +1,4 @@
-import type { Relation, Schema, Table } from '../schema/model';
+import { kindLabel, type Relation, type Schema, type Table } from '../schema/model';
 import { ArrowRight, CloseIcon, ColumnIcon } from './icons';
 
 interface Props {
@@ -98,6 +98,9 @@ function RelationList(props: {
               <span>
                 {side === 'to' && <b>{label(schema, r.to)}.</b>}
                 {r.toColumns.join(', ')}
+              </span>
+              <span className="badge rel-kind" title={r.kind === 'one-to-one' ? 'one-to-one' : side === 'to' ? 'many-to-one' : 'one-to-many'}>
+                {kindLabel(r.kind, side === 'to')}
               </span>
             </button>
           </li>
