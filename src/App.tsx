@@ -30,7 +30,7 @@ import { parseOpenApi } from './schema/openApi';
 import { parseSql } from './schema/sqlParser';
 import { load, save } from './storage';
 import DetailPanel from './ui/DetailPanel';
-import { MoonIcon, SidebarIcon, SunIcon } from './ui/icons';
+import { DetailsPanelIcon, MoonIcon, SidebarIcon, SunIcon } from './ui/icons';
 import Sidebar from './ui/Sidebar';
 import { useTheme } from './ui/useTheme';
 
@@ -66,6 +66,8 @@ function Viewer() {
   const canvasRef = useRef<HTMLElement>(null);
   const [focus, setFocus] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(() => load('sv.sidebar') !== 'closed');
+  // Hiding the details panel keeps the selection (and its highlight); only the panel goes away
+  const [detailsOpen, setDetailsOpen] = useState(() => load('sv.details') !== 'closed');
   // Compact layout of just the focused table and its relatives; base positions stay untouched
   // underneath so leaving focus mode restores the full diagram as it was.
   const [focusPositions, setFocusPositions] = useState<Record<string, { x: number; y: number }> | null>(null);
@@ -187,6 +189,13 @@ function Viewer() {
     [focusPositions, onNodesChange],
   );
 
+  const toggleDetails = useCallback(() => {
+    setDetailsOpen((open) => {
+      save('sv.details', open ? 'closed' : 'open');
+      return !open;
+    });
+  }, []);
+
   const toggleSidebar = useCallback(() => {
     setSidebarOpen((open) => {
       save('sv.sidebar', open ? 'closed' : 'open');
@@ -200,10 +209,11 @@ function Viewer() {
       if (el.closest('input, textarea') || e.metaKey || e.ctrlKey || e.altKey) return;
       if (e.key === 'f' || e.key === 'F') setFocus((f) => !f);
       if (e.key === '[') toggleSidebar();
+      if (e.key === ']') toggleDetails();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [toggleSidebar]);
+  }, [toggleSidebar, toggleDetails]);
 
   const fkColumns = useMemo(() => {
     const map = new Map<string, Set<string>>();
@@ -356,6 +366,18 @@ function Viewer() {
               <button className="icon-btn" onClick={toggleTheme} aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`}>
                 {theme === 'dark' ? <SunIcon /> : <MoonIcon />}
               </button>
+              {/* Only offered while a table is selected: otherwise there are no details to show */}
+              {selected && (
+                <button
+                  className={detailsOpen ? 'icon-btn' : 'icon-btn icon-btn--on'}
+                  onClick={toggleDetails}
+                  aria-label={detailsOpen ? 'Hide details panel' : 'Show details panel'}
+                  aria-expanded={detailsOpen}
+                  title={`${detailsOpen ? 'Hide' : 'Show'} table details (])`}
+                >
+                  <DetailsPanelIcon />
+                </button>
+              )}
             </Panel>
             <Panel position="bottom-center" className="legend">
               <span>
@@ -389,7 +411,7 @@ function Viewer() {
           />
         )}
       </main>
-      {selected && (
+      {selected && detailsOpen && (
         <DetailPanel
           schema={schema}
           table={selected}

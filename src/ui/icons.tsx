@@ -77,3 +77,10 @@ export const SidebarIcon = () => (
     <path d="M9 4v16" />
   </Svg>
 );
+
+export const DetailsPanelIcon = () => (
+  <Svg size={16}>
+    <rect x="3" y="4" width="18" height="16" rx="2" />
+    <path d="M15 4v16" />
+  </Svg>
+);
