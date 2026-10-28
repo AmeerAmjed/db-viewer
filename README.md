@@ -8,7 +8,7 @@
 
 ## Features
 
-- **Paste, drop or import SQL.** Paste `CREATE TABLE` statements, drag a `.sql` file onto the page, or pick one with **Import .sql file**. Reads Supabase's "Schema for context" export, `pg_dump` output and migrations. Not sure where to start? Hit **Load example**.
+- **Start in one step.** DB Viewer opens with a dialog: continue with your last schema, paste `CREATE TABLE` statements, drop or choose a `.sql` file, or hit **Load example**. Reopen it any time with **Open schema**. Reads Supabase's "Schema for context" export, `pg_dump` output and migrations. You can also paste in the sidebar or drop a file anywhere on the diagram.
 - **Tables you can expand.** Tables start collapsed; open one to see every column with its type, primary and foreign keys, unique and nullable markers.
 - **Relations at a glance.** Foreign keys are drawn as lines with crow's-foot ends, so you can tell **many-to-one** from **one-to-one** without reading anything.
 - **Hover or click a line** to see exactly which columns it connects, its type, whether it's optional and its constraint name. Clicking pins the card so it stays open.
@@ -18,13 +18,15 @@
 - **Export and copy.** Download as PNG, SVG, SQL, [Mermaid](https://mermaid.js.org/syntax/entityRelationshipDiagram.html), [DBML](https://dbml.dbdiagram.io/) or JSON, or copy the image, SQL, Mermaid or DBML to the clipboard. In focus mode, only what's on screen is exported.
 - **Light and dark themes**, and both side panels can be hidden for a full-screen diagram.
 - **Works on your phone** with a touch-friendly layout (see below).
-- **Private by design.** Everything runs in your browser. Your SQL is never uploaded anywhere; it's only remembered in your own browser so it's still there next time.
+- **Private by design.** Everything runs in your browser and your SQL is never uploaded anywhere. Nothing is saved unless you tick **Remember the schema on this device** in the dialog; untick it to delete the saved copy.
+
+![The start dialog: continue with the saved example schema, paste SQL, drop a .sql file or load the example, with the Remember checkbox ticked](docs/welcome.png)
 
 ![Focus mode in the light theme with a relation's details pinned](docs/focus-light.png)
 
 ## On your phone
 
-The diagram fills the screen under a compact nav bar. The table list slides in as a drawer, table details open as a bottom sheet, and every view, download and copy option lives in the ⋮ menu. Tap a line to pin its details.
+The diagram fills the screen under a compact nav bar. The table list slides in as a drawer, table details open as a bottom sheet, and **Open schema** plus every view, download and copy option lives in the ⋮ menu. Tap a line to pin its details.
 
 ![DB Viewer on a phone: the full-screen diagram, the sidebar drawer, the details bottom sheet and the ⋮ menu](docs/mobile.png)
 
@@ -35,7 +37,7 @@ The diagram fills the screen under a compact nav bar. The table list slides in a
 | <kbd>F</kbd> | Toggle focus mode |
 | <kbd>[</kbd> | Show / hide the sidebar |
 | <kbd>]</kbd> | Show / hide the table details panel |
-| <kbd>Esc</kbd> | Unpin a relation card |
+| <kbd>Esc</kbd> | Close the start dialog, or unpin a relation card |
 
 ## Getting your Supabase schema
 
@@ -52,7 +54,7 @@ npm test           # parser and exporter tests
 npm run build      # production build in dist/
 ```
 
-Running locally adds a **Connect** tab that loads the schema straight from a Supabase project using its URL and API key. The key is sent only to your local dev server, never stored, and this option isn't available on the hosted site.
+Running locally adds **Connect Supabase** to the start dialog (and a **Connect** tab to the sidebar), which loads the schema straight from a Supabase project using its URL and API key. Supabase only shares the schema with a **secret** key (`sb_secret_…`) or the legacy `service_role` key; publishable and anon keys are refused. The key is sent only to your local dev server and never stored. A connected schema survives reloading the tab; once the tab is closed, DB Viewer asks you to connect again with the URL already filled in. This option isn't available on the hosted site.
 
 ## Built with
 
