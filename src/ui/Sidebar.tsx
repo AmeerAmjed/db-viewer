@@ -1,5 +1,6 @@
 import { useMemo, useRef, useState, type DragEvent, type FormEvent } from 'react';
 import type { Schema } from '../schema/model';
+import { CAN_CONNECT } from '../env';
 import { load } from '../storage';
 
 type Tab = 'tables' | 'sql' | 'connect';
@@ -32,7 +33,7 @@ export default function Sidebar(props: Props) {
         </p>
       </header>
       <nav className="tabs" role="tablist">
-        {(['tables', 'sql', 'connect'] as const).map((t) => (
+        {(CAN_CONNECT ? (['tables', 'sql', 'connect'] as const) : (['tables', 'sql'] as const)).map((t) => (
           <button key={t} role="tab" aria-selected={tab === t} className={tab === t ? 'tab tab--on' : 'tab'} onClick={() => setTab(t)}>
             {t === 'tables' ? 'Tables' : t === 'sql' ? 'Paste SQL' : 'Connect'}
           </button>
@@ -57,7 +58,7 @@ export default function Sidebar(props: Props) {
           }}
         />
       )}
-      {tab === 'connect' && (
+      {tab === 'connect' && CAN_CONNECT && (
         <ConnectTab
           onConnect={async (url, key) => {
             await props.onConnect(url, key);
@@ -112,7 +113,7 @@ function TablesTab({ schema, selectedId, onSelect }: Props) {
             </li>
           );
         })}
-        {!tables.length && <li className="muted pad">{schema.tables.length ? 'No matches' : 'No tables yet. Paste SQL or connect a project.'}</li>}
+        {!tables.length && <li className="muted pad">{schema.tables.length ? 'No matches' : `No tables yet. Paste SQL${CAN_CONNECT ? ' or connect a project' : ''}.`}</li>}
       </ul>
     </div>
   );

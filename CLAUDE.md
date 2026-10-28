@@ -14,6 +14,8 @@ Superbase Viewer: a local web app that draws a Postgres/Supabase schema as an in
 - `npm test`: Vitest, all tests
 - Single test: `npx vitest run src/schema/sqlParser.test.ts -t "composite primary keys"`
 
+Deployment: `.github/workflows/pages.yml` tests, builds with `VITE_STATIC_HOST=true` and publishes `dist/` to GitHub Pages on every push to `main`. `vite.config.ts` uses `base: './'` so the build works under any repo path. The static build has no server, so `src/env.ts` (`CAN_CONNECT`) hides the Connect tab there.
+
 `vitest@5` declares a peer range that confuses npm 10 on a fresh resolve. If adding or upgrading dev dependencies fails with `Cannot read properties of null (reading 'edgesOut')`, use `--legacy-peer-deps`. A plain `npm install` from the lockfile works.
 
 ## Architecture

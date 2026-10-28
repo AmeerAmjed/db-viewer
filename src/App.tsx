@@ -30,6 +30,7 @@ import example from './schema/example.sql?raw';
 import { subset, toDbml, toJson, toMermaid, toSql } from './schema/exporters';
 import { parseOpenApi } from './schema/openApi';
 import { parseSql } from './schema/sqlParser';
+import { CAN_CONNECT } from './env';
 import { load, save } from './storage';
 import DetailPanel from './ui/DetailPanel';
 import ExportMenu, { type CopyFormat, type ExportFormat } from './ui/ExportMenu';
@@ -514,7 +515,7 @@ function Viewer() {
             )}
             {!schema.tables.length && (
               <Panel position="top-center" className="empty">
-                No tables found. Paste or drop a .sql file, connect a Supabase project from the sidebar, or{' '}
+                No tables found. Paste or drop a .sql file{CAN_CONNECT ? ', connect a Supabase project from the sidebar,' : ''} or{' '}
                 <button className="link-btn" onClick={() => applySql(example, 'example')}>
                   load an example
                 </button>
