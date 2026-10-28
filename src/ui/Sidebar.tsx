@@ -5,6 +5,7 @@ import { load } from '../storage';
 type Tab = 'tables' | 'sql' | 'connect';
 
 interface Props {
+  open: boolean;
   schema: Schema;
   sourceLabel: string;
   sql: string;
@@ -21,7 +22,8 @@ export default function Sidebar(props: Props) {
   const own = schema.tables.filter((t) => !t.external).length;
 
   return (
-    <aside className="sidebar">
+    // Hidden rather than unmounted so the search, SQL draft and connect form survive toggling
+    <aside className="sidebar" hidden={!props.open}>
       <header className="sidebar-head">
         <h1>Superbase Viewer</h1>
         <p className="muted">

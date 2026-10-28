@@ -29,7 +29,7 @@ import { parseOpenApi } from './schema/openApi';
 import { parseSql } from './schema/sqlParser';
 import { load, save } from './storage';
 import DetailPanel from './ui/DetailPanel';
-import { MoonIcon, SunIcon } from './ui/icons';
+import { MoonIcon, SidebarIcon, SunIcon } from './ui/icons';
 import Sidebar from './ui/Sidebar';
 import { useTheme } from './ui/useTheme';
 
@@ -59,6 +59,7 @@ function Viewer() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [focus, setFocus] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(() => load('sv.sidebar') !== 'closed');
   // Compact layout of just the focused table and its relatives; base positions stay untouched
   // underneath so leaving focus mode restores the full diagram as it was.
   const [focusPositions, setFocusPositions] = useState<Record<string, { x: number; y: number }> | null>(null);
@@ -180,15 +181,23 @@ function Viewer() {
     [focusPositions, onNodesChange],
   );
 
+  const toggleSidebar = useCallback(() => {
+    setSidebarOpen((open) => {
+      save('sv.sidebar', open ? 'closed' : 'open');
+      return !open;
+    });
+  }, []);
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const el = e.target as HTMLElement;
       if (el.closest('input, textarea') || e.metaKey || e.ctrlKey || e.altKey) return;
       if (e.key === 'f' || e.key === 'F') setFocus((f) => !f);
+      if (e.key === '[') toggleSidebar();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, []);
+  }, [toggleSidebar]);
 
   const fkColumns = useMemo(() => {
     const map = new Map<string, Set<string>>();
@@ -247,8 +256,9 @@ function Viewer() {
   const selected = schema.tables.find((t) => t.id === selectedId);
 
   return (
-    <div className="app">
+    <div className={sidebarOpen ? 'app' : 'app app--no-sidebar'}>
       <Sidebar
+        open={sidebarOpen}
         schema={schema}
         sourceLabel={sourceLabel}
         sql={sql}
@@ -277,6 +287,17 @@ function Viewer() {
             <Background variant={BackgroundVariant.Dots} gap={20} size={1} />
             <Controls showInteractive={false} />
             <MiniMap pannable zoomable nodeColor={(n) => (neighbours?.has(n.id) ? EDGE_COLORS[theme].active : EDGE_COLORS[theme].idle)} />
+            <Panel position="top-left">
+              <button
+                className={sidebarOpen ? 'icon-btn' : 'icon-btn icon-btn--on'}
+                onClick={toggleSidebar}
+                aria-label={sidebarOpen ? 'Hide sidebar' : 'Show sidebar'}
+                aria-expanded={sidebarOpen}
+                title={`${sidebarOpen ? 'Hide' : 'Show'} sidebar ([)`}
+              >
+                <SidebarIcon />
+              </button>
+            </Panel>
             <Panel position="top-right" className="toolbar">
               <button
                 className={focus ? 'btn btn--on' : 'btn'}

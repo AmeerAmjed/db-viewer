@@ -81,6 +81,14 @@ code,
   height: 100%;
 }
 
+.app--no-sidebar {
+  grid-template-columns: 1fr auto;
+}
+
+.sidebar[hidden] {
+  display: none;
+}
+
 .canvas {
   position: relative;
   min-width: 0;
@@ -95,6 +103,9 @@ code,
   .app {
     grid-template-columns: 1fr;
     grid-template-rows: auto 1fr auto;
+  }
+  .app--no-sidebar {
+    grid-template-rows: 1fr auto;
   }
   .sidebar {
     max-height: 40vh;
@@ -158,6 +169,11 @@ code,
   border-radius: 6px;
   background: var(--bg);
   cursor: pointer;
+}
+
+.icon-btn--on {
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
 .input {

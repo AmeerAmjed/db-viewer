@@ -70,3 +70,10 @@ export const ArrowRight = () => (
     <path d="M5 12h14M13 6l6 6-6 6" />
   </Svg>
 );
+
+export const SidebarIcon = () => (
+  <Svg size={16}>
+    <rect x="3" y="4" width="18" height="16" rx="2" />
+    <path d="M9 4v16" />
+  </Svg>
+);
