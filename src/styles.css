@@ -887,6 +887,129 @@ button.badge--fk {
   min-height: 40px;
 }
 
+/* ---------------------------------------------------------------- welcome dialog */
+
+.welcome {
+  width: min(560px, calc(100vw - 32px));
+  max-height: calc(100dvh - 32px);
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--panel);
+  color: var(--text);
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.35);
+}
+
+.welcome::backdrop {
+  background: rgba(0, 0, 0, 0.45);
+}
+
+.welcome-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px 20px 18px;
+}
+
+.welcome-body p {
+  margin: 0;
+}
+
+.welcome-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.welcome-head h2 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: 18px;
+}
+
+.welcome-resume {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  background: var(--accent-soft);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.welcome-resume > span:first-child {
+  display: grid;
+  min-width: 0;
+}
+
+.welcome-resume b {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.welcome-toast {
+  padding: 8px 12px;
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  background: var(--bg);
+  font-size: 13px;
+}
+
+.welcome-tabs {
+  padding: 0;
+}
+
+.welcome .tab-body {
+  padding: 0;
+  overflow: visible;
+}
+
+.welcome-sql {
+  flex: none;
+  min-height: 160px;
+  height: 30vh;
+}
+
+.welcome-drop {
+  padding: 14px;
+  border: 2px dashed var(--border);
+  border-radius: 8px;
+  color: var(--muted);
+  text-align: center;
+}
+
+.welcome-drop--on {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.welcome-foot {
+  display: grid;
+  gap: 4px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.check input {
+  accent-color: var(--accent);
+}
+
 @media (max-width: 800px) {
   /* The diagram fills the screen; sidebar and details float over it */
   .app,

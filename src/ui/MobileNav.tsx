@@ -6,6 +6,7 @@ import { useDismiss } from './useDismiss';
 interface Props {
   title: string;
   onOpenSidebar: () => void;
+  onOpenSchema: () => void;
   focus: boolean;
   onToggleFocus: () => void;
   onExpandAll: () => void;
@@ -85,6 +86,10 @@ export default function MobileNav(props: Props) {
         </button>
         {open && (
           <div className="export-menu mnav-menu" role="menu" aria-label="More">
+            <div className="export-group">
+              <span className="export-heading">Schema</span>
+              {item('Open schema…', props.onOpenSchema)}
+            </div>
             <div className="export-group">
               <span className="export-heading">View</span>
               {toggle('Focus mode', props.focus, props.onToggleFocus)}

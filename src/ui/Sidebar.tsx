@@ -133,7 +133,7 @@ function TablesTab({ schema, selectedId, onSelect }: Props) {
   );
 }
 
-const SQL_FILE_TYPES = '.sql,.psql,.pgsql,.txt,text/plain,application/sql';
+export const SQL_FILE_TYPES = '.sql,.psql,.pgsql,.txt,text/plain,application/sql';
 
 function SqlTab({ sql, schema, onApplySql, onLoadExample, onImportFile }: Props) {
   const [draft, setDraft] = useState(sql);
@@ -200,7 +200,7 @@ function SqlTab({ sql, schema, onApplySql, onLoadExample, onImportFile }: Props)
   );
 }
 
-function ConnectTab({ onConnect }: { onConnect: (url: string, key: string) => Promise<void> }) {
+export function ConnectTab({ onConnect }: { onConnect: (url: string, key: string) => Promise<void> }) {
   const [url, setUrl] = useState(() => load('sv.url') ?? '');
   const [key, setKey] = useState('');
   const [busy, setBusy] = useState(false);

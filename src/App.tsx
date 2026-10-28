@@ -31,13 +31,14 @@ import { subset, toDbml, toJson, toMermaid, toSql } from './schema/exporters';
 import { parseOpenApi } from './schema/openApi';
 import { parseSql } from './schema/sqlParser';
 import { CAN_CONNECT } from './env';
-import { load, save } from './storage';
+import { load, loadSession, remove, removeSession, save, saveSession } from './storage';
 import DetailPanel from './ui/DetailPanel';
 import ExportMenu, { type CopyFormat, type ExportFormat } from './ui/ExportMenu';
 import { DetailsPanelIcon, MoonIcon, SidebarIcon, SunIcon } from './ui/icons';
 import Sidebar from './ui/Sidebar';
 import { useTheme } from './ui/useTheme';
 import MobileNav from './ui/MobileNav';
+import WelcomeDialog from './ui/WelcomeDialog';
 import { useMediaQuery } from './ui/useDismiss';
 
 const nodeTypes = { table: TableNode };
@@ -72,9 +73,18 @@ function Viewer() {
   const { fitView, screenToFlowPosition, flowToScreenPosition } = useReactFlow();
   useViewport(); // re-render on pan/zoom so a pinned card follows its line
 
+  const [startup] = useState(restore);
   const [sql, setSql] = useState(() => load('sv.sql') ?? '');
-  const [schema, setSchema] = useState<Schema>(() => parseSql(sql));
-  const [sourceLabel, setSourceLabel] = useState('pasted SQL');
+  const [schema, setSchema] = useState<Schema>(startup.schema);
+  const [sourceLabel, setSourceLabel] = useState(startup.label);
+  // Saving the schema is opt-in; a copy saved before the opt-in existed counts as opted in
+  const [remember, setRemember] = useState(() => {
+    const stored = load('sv.remember');
+    return stored ? stored === 'on' : load('sv.sql') !== null;
+  });
+  const [welcomeOpen, setWelcomeOpen] = useState(true);
+  // The SQL behind the diagram on screen; null for a connected project, which is never saved
+  const shownSql = useRef<{ text: string; label: string } | null>(startup.connected || !sql ? null : { text: sql, label: sourceLabel });
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
@@ -106,11 +116,29 @@ function Viewer() {
   const applySql = useCallback(
     (text: string, label = 'pasted SQL') => {
       setSql(text);
-      save('sv.sql', text);
+      shownSql.current = { text, label };
+      removeSession('sv.session');
+      remove('sv.connected');
+      if (remember) {
+        save('sv.sql', text);
+        save('sv.label', label);
+      }
       showSchema(parseSql(text), label);
     },
-    [showSchema],
+    [showSchema, remember],
   );
+
+  const changeRemember = (on: boolean) => {
+    setRemember(on);
+    save('sv.remember', on ? 'on' : 'off');
+    if (on && shownSql.current) {
+      save('sv.sql', shownSql.current.text);
+      save('sv.label', shownSql.current.label);
+    } else if (!on) {
+      remove('sv.sql');
+      remove('sv.label');
+    }
+  };
 
   const importFile = useCallback(async (file: File) => applySql(await file.text(), file.name), [applySql]);
 
@@ -140,8 +168,13 @@ function Viewer() {
       });
       const body = await res.json().catch(() => ({ error: `Request failed (${res.status})` }));
       if (!res.ok) throw new Error(body.error ?? `Request failed (${res.status})`);
+      const host = new URL(url).hostname;
       save('sv.url', url);
-      showSchema(parseOpenApi(body), new URL(url).hostname);
+      // Keep the schema (never the key) for reloads of this tab, and remember that a project was on screen
+      saveSession('sv.session', JSON.stringify({ label: host, spec: body }));
+      save('sv.connected', host);
+      shownSql.current = null;
+      showSchema(parseOpenApi(body), host);
     },
     [showSchema],
   );
@@ -343,10 +376,13 @@ function Viewer() {
 
   const selected = schema.tables.find((t) => t.id === selectedId);
 
-  const [toast, setToast] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ text: string; ms: number } | null>(
+    startup.notice ? { text: startup.notice, ms: 7000 } : null,
+  );
+  const notify = (text: string, ms = 2500) => setToast({ text, ms });
   useEffect(() => {
     if (!toast) return;
-    const t = setTimeout(() => setToast(null), 2500);
+    const t = setTimeout(() => setToast(null), toast.ms);
     return () => clearTimeout(t);
   }, [toast]);
 
@@ -359,14 +395,14 @@ function Viewer() {
     try {
       if (format === 'png' || format === 'svg') {
         await downloadDiagram(visibleNodes(), format, baseName);
-        setToast(`Downloaded ${baseName}.${format}`);
+        notify(`Downloaded ${baseName}.${format}`);
       } else {
         const { ext, mime } = TEXT_EXPORTERS[format];
         downloadText(exportText(format), `${baseName}.${ext}`, mime);
-        setToast(`Downloaded ${baseName}.${ext}`);
+        notify(`Downloaded ${baseName}.${ext}`);
       }
     } catch (err) {
-      setToast(`Export failed: ${(err as Error).message}`);
+      notify(`Export failed: ${(err as Error).message}`);
     }
   };
 
@@ -374,9 +410,9 @@ function Viewer() {
     try {
       if (format === 'image') await copyDiagram(visibleNodes());
       else await navigator.clipboard.writeText(exportText(format));
-      setToast(`Copied ${format === 'image' ? 'image' : TEXT_EXPORTERS[format].label} to clipboard`);
+      notify(`Copied ${format === 'image' ? 'image' : TEXT_EXPORTERS[format].label} to clipboard`);
     } catch (err) {
-      setToast(`Copy failed: ${(err as Error).message}`);
+      notify(`Copy failed: ${(err as Error).message}`);
     }
   };
 
@@ -427,6 +463,7 @@ function Viewer() {
           <MobileNav
             title="DB Viewer"
             onOpenSidebar={toggleSidebar}
+            onOpenSchema={() => setWelcomeOpen(true)}
             focus={focus}
             onToggleFocus={() => setFocus((f) => !f)}
             onExpandAll={() => setAllExpanded(true)}
@@ -442,9 +479,10 @@ function Viewer() {
           />
         )}
         {dropping && <div className="drop-overlay">Drop a .sql file to visualize it</div>}
-        {toast && (
+        {/* While the dialog is open it shows the toast itself: a modal covers the canvas */}
+        {toast && !welcomeOpen && (
           <div className="toast" role="status">
-            {toast}
+            {toast.text}
           </div>
         )}
         <ToggleTableContext.Provider value={toggleTable}>
@@ -494,6 +532,9 @@ function Viewer() {
                   </button>
                 </Panel>
                 <Panel position="top-right" className="toolbar">
+                  <button className="btn" onClick={() => setWelcomeOpen(true)} title="Paste, drop or import another schema">
+                    Open schema
+                  </button>
                   <button
                     className={focus ? 'btn btn--on' : 'btn'}
                     aria-pressed={focus}
@@ -551,7 +592,11 @@ function Viewer() {
             )}
             {!schema.tables.length && (
               <Panel position="top-center" className="empty">
-                No tables found. Paste or drop a .sql file{CAN_CONNECT ? ', connect a Supabase project from the sidebar,' : ''} or{' '}
+                No tables found.{' '}
+                <button className="link-btn" onClick={() => setWelcomeOpen(true)}>
+                  Open a schema
+                </button>
+                {CAN_CONNECT ? ', connect a Supabase project from the sidebar,' : ''} or{' '}
                 <button className="link-btn" onClick={() => applySql(example, 'example')}>
                   load an example
                 </button>
@@ -583,8 +628,55 @@ function Viewer() {
           onClose={() => setSelectedId(null)}
         />
       )}
+      <WelcomeDialog
+        open={welcomeOpen}
+        onClose={() => setWelcomeOpen(false)}
+        current={
+          schema.tables.length
+            ? { label: sourceLabel, tables: schema.tables.filter((t) => !t.external).length, saved: remember && shownSql.current !== null }
+            : null
+        }
+        remember={remember}
+        onRememberChange={changeRemember}
+        onApplySql={applySql}
+        onLoadExample={() => applySql(example, 'example')}
+        onImportFile={importFile}
+        onConnect={connect}
+        initialTab={startup.reconnect ? 'connect' : 'sql'}
+        toast={toast?.text ?? null}
+      />
     </div>
   );
+}
+
+/**
+ * What to show on launch. A project connected in this tab comes back from sessionStorage. If one was
+ * on screen but the tab has since closed, the saved SQL (if any) shows and the user is asked to
+ * connect again.
+ */
+function restore(): { schema: Schema; label: string; connected: boolean; reconnect: boolean; notice: string | null } {
+  const sqlSchema = () => parseSql(load('sv.sql') ?? '');
+  const sqlLabel = load('sv.label') ?? 'pasted SQL';
+  const session = loadSession('sv.session');
+  if (session) {
+    try {
+      const { label, spec } = JSON.parse(session);
+      return { schema: parseOpenApi(spec), label, connected: true, reconnect: false, notice: `Restored ${label} from this session` };
+    } catch {
+      removeSession('sv.session');
+    }
+  }
+  const host = load('sv.connected');
+  if (host && CAN_CONNECT) {
+    return {
+      schema: sqlSchema(),
+      label: sqlLabel,
+      connected: false,
+      reconnect: true,
+      notice: `Connect again to load ${host}: connected projects aren't kept after the tab closes`,
+    };
+  }
+  return { schema: sqlSchema(), label: sqlLabel, connected: false, reconnect: false, notice: null };
 }
 
 /** Matches the phone layout breakpoint in styles.css. */
