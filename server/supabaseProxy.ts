@@ -43,6 +43,8 @@ async function introspect(req: IncomingMessage, res: ServerResponse) {
     return send(res, 400, { error: 'Project URL must be http(s)' });
   }
 
+  if (!isSecretKey(key.trim())) return send(res, 401, { error: SECRET_KEY_REQUIRED });
+
   const headers: Record<string, string> = { apikey: key.trim(), Accept: 'application/openapi+json' };
   // Legacy anon / service_role keys are JWTs and also go in Authorization; new sb_* keys must not.
   if (key.trim().startsWith('eyJ')) headers.Authorization = `Bearer ${key.trim()}`;
@@ -50,6 +52,7 @@ async function introspect(req: IncomingMessage, res: ServerResponse) {
   try {
     const upstream = await fetch(new URL('/rest/v1/', base.origin), { headers });
     const text = await upstream.text();
+    if (upstream.status === 401 && /secret api key required/i.test(text)) return send(res, 401, { error: SECRET_KEY_REQUIRED });
     if (!upstream.ok) {
       return send(res, upstream.status, { error: `Supabase responded ${upstream.status}: ${text.slice(0, 300)}` });
     }
@@ -59,6 +62,25 @@ async function introspect(req: IncomingMessage, res: ServerResponse) {
   } catch (err) {
     send(res, 502, { error: `Could not reach ${base.origin}: ${(err as Error).message}` });
   }
+}
+
+// Supabase serves the OpenAPI schema (`GET /rest/v1/`) to secret keys only
+const SECRET_KEY_REQUIRED =
+  'Supabase only shares the schema with a secret key. Use an sb_secret_… key or the legacy service_role key ' +
+  '(Project Settings → API Keys); publishable and anon keys are refused.';
+
+/** Rejects the keys Supabase is known to refuse: sb_publishable_… and legacy anon JWTs. */
+function isSecretKey(key: string): boolean {
+  if (key.startsWith('sb_publishable_')) return false;
+  if (key.startsWith('eyJ')) {
+    try {
+      const { role } = JSON.parse(Buffer.from(key.split('.')[1], 'base64url').toString());
+      return role !== 'anon';
+    } catch {
+      return true; // not a readable JWT: let Supabase decide
+    }
+  }
+  return true;
 }
 
 function readBody(req: IncomingMessage): Promise<string> {

@@ -222,9 +222,9 @@ function ConnectTab({ onConnect }: { onConnect: (url: string, key: string) => Pr
   return (
     <form className="tab-body" onSubmit={submit}>
       <p className="muted small">
-        Reads the live schema from your project's REST API (Project Settings → API). Use the <b>secret</b> or <b>service_role</b> key
-        for the full schema; an anon/publishable key only shows what that role is allowed to see. The key goes to the local dev
-        server only and is never stored.
+        Reads the live schema from your project's REST API (Project Settings → API Keys). Supabase only shares the schema with a{' '}
+        <b>secret</b> (<code>sb_secret_…</code>) or legacy <b>service_role</b> key; publishable and anon keys are refused. The key
+        goes to the local dev server only and is never stored.
       </p>
       <label className="field">
         <span>Project URL</span>
@@ -232,7 +232,7 @@ function ConnectTab({ onConnect }: { onConnect: (url: string, key: string) => Pr
       </label>
       <label className="field">
         <span>API key</span>
-        <input className="input" required type="password" autoComplete="off" placeholder="sb_secret_… or eyJ…" value={key} onChange={(e) => setKey(e.target.value)} />
+        <input className="input" required type="password" autoComplete="off" placeholder="sb_secret_… or service_role eyJ…" value={key} onChange={(e) => setKey(e.target.value)} />
       </label>
       <button className="btn btn--primary" disabled={busy}>
         {busy ? 'Loading…' : 'Load schema'}
