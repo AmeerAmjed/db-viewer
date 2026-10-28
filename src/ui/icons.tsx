@@ -95,3 +95,30 @@ export const Logo = ({ size = 24 }: { size?: number }) => (
     <circle cx="18" cy="28.5" r="2" fill="#facc15" />
   </svg>
 );
+
+export const MenuIcon = () => (
+  <Svg size={18}>
+    <path d="M4 6h16M4 12h16M4 18h16" />
+  </Svg>
+);
+
+export const MoreIcon = () => (
+  <Svg size={18}>
+    <circle cx="12" cy="5" r="1.2" />
+    <circle cx="12" cy="12" r="1.2" />
+    <circle cx="12" cy="19" r="1.2" />
+  </Svg>
+);
+
+export const FocusIcon = () => (
+  <Svg size={16}>
+    <circle cx="12" cy="12" r="8" />
+    <circle cx="12" cy="12" r="3" />
+  </Svg>
+);
+
+export const CheckIcon = () => (
+  <Svg size={14}>
+    <path d="M5 12l5 5L20 7" />
+  </Svg>
+);

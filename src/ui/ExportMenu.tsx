@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { useDismiss } from './useDismiss';
 
 export type ExportFormat = 'png' | 'svg' | 'sql' | 'mermaid' | 'dbml' | 'json';
 export type CopyFormat = 'image' | 'sql' | 'mermaid' | 'dbml';
 
-const DOWNLOADS: { format: ExportFormat; label: string; hint: string }[] = [
+export const DOWNLOADS: { format: ExportFormat; label: string; hint: string }[] = [
   { format: 'png', label: 'PNG image', hint: '.png' },
   { format: 'svg', label: 'SVG image', hint: '.svg' },
   { format: 'sql', label: 'SQL', hint: '.sql' },
@@ -12,7 +13,7 @@ const DOWNLOADS: { format: ExportFormat; label: string; hint: string }[] = [
   { format: 'json', label: 'JSON', hint: '.json' },
 ];
 
-const COPIES: { format: CopyFormat; label: string }[] = [
+export const COPIES: { format: CopyFormat; label: string }[] = [
   { format: 'image', label: 'Image' },
   { format: 'sql', label: 'SQL' },
   { format: 'mermaid', label: 'Mermaid' },
@@ -32,24 +33,9 @@ export default function ExportMenu({ disabled, scope, onDownload, onCopy }: Prop
   const root = useRef<HTMLDivElement>(null);
   const firstItem = useRef<HTMLButtonElement>(null);
 
+  useDismiss(open, root, useCallback(() => setOpen(false), []));
   useEffect(() => {
-    if (!open) return;
-    firstItem.current?.focus();
-    const onPointer = (e: PointerEvent) => {
-      if (!root.current?.contains(e.target as Node)) setOpen(false);
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        e.stopPropagation();
-        setOpen(false);
-      }
-    };
-    document.addEventListener('pointerdown', onPointer);
-    document.addEventListener('keydown', onKey, true);
-    return () => {
-      document.removeEventListener('pointerdown', onPointer);
-      document.removeEventListener('keydown', onKey, true);
-    };
+    if (open) firstItem.current?.focus();
   }, [open]);
 
   const pick = (fn: () => void) => () => {

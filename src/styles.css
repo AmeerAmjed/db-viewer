@@ -826,8 +826,64 @@ button.badge--fk {
 /* ---------------------------------------------------------------- phone layout (isPhone() in App.tsx) */
 
 .drawer-backdrop,
-.sidebar-close {
+.sidebar-close,
+.mnav {
   display: none;
+}
+
+.mnav {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 20;
+  height: 52px;
+  box-sizing: border-box;
+  align-items: center;
+  gap: 4px;
+  padding: 0 8px;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel);
+}
+
+/* 40px: comfortable touch targets */
+.mnav-btn {
+  width: 40px;
+  height: 40px;
+  border-color: transparent;
+  background: none;
+}
+
+.mnav-title {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding-left: 4px;
+  font-weight: 700;
+  font-size: 16px;
+}
+
+.mnav-title span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mnav-more {
+  position: relative;
+}
+
+.mnav-menu {
+  width: 240px;
+  max-height: calc(100vh - 72px);
+  overflow-y: auto;
+}
+
+.mnav-menu .export-item {
+  align-items: center;
+  min-height: 40px;
 }
 
 @media (max-width: 800px) {
@@ -881,20 +937,14 @@ button.badge--fk {
     box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.35);
   }
 
-  /* Toolbar: compact, wraps right-aligned without covering the sidebar button */
-  .toolbar {
-    max-width: calc(100vw - 72px);
-    gap: 4px;
+  /* The MobileNav bar replaces the toolbar; the diagram starts below it */
+  .canvas {
+    padding-top: 52px;
+    box-sizing: border-box;
   }
 
-  .toolbar .btn {
-    padding: 5px 9px;
-    font-size: 13px;
-  }
-
-  .toolbar .icon-btn {
-    width: 30px;
-    height: 30px;
+  .mnav {
+    display: flex;
   }
 
   .react-flow__minimap {
@@ -921,10 +971,10 @@ button.badge--fk {
   }
 
   .empty {
-    margin-top: 120px;
+    margin-top: 12px;
   }
 
   .toast {
-    top: 120px;
+    top: 64px;
   }
 }

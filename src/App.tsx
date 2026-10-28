@@ -37,6 +37,8 @@ import ExportMenu, { type CopyFormat, type ExportFormat } from './ui/ExportMenu'
 import { DetailsPanelIcon, MoonIcon, SidebarIcon, SunIcon } from './ui/icons';
 import Sidebar from './ui/Sidebar';
 import { useTheme } from './ui/useTheme';
+import MobileNav from './ui/MobileNav';
+import { useMediaQuery } from './ui/useDismiss';
 
 const nodeTypes = { table: TableNode };
 const edgeTypes = { relation: RelationEdge };
@@ -66,6 +68,7 @@ export default function App() {
 
 function Viewer() {
   const [theme, toggleTheme] = useTheme();
+  const phone = useMediaQuery(PHONE_QUERY);
   const { fitView, screenToFlowPosition, flowToScreenPosition } = useReactFlow();
   useViewport(); // re-render on pan/zoom so a pinned card follows its line
 
@@ -420,6 +423,24 @@ function Viewer() {
           if (file) void importFile(file);
         }}
       >
+        {phone && (
+          <MobileNav
+            title="DB Viewer"
+            onOpenSidebar={toggleSidebar}
+            focus={focus}
+            onToggleFocus={() => setFocus((f) => !f)}
+            onExpandAll={() => setAllExpanded(true)}
+            onCollapseAll={() => setAllExpanded(false)}
+            onArrange={() => arrange(expanded)}
+            dark={theme === 'dark'}
+            onToggleTheme={toggleTheme}
+            details={selected ? { open: detailsOpen, onToggle: toggleDetails } : null}
+            canExport={schema.tables.length > 0}
+            exportScope={focusSet ? `Only the ${focusSet.size} tables in focus` : 'All tables'}
+            onDownload={download}
+            onCopy={copy}
+          />
+        )}
         {dropping && <div className="drop-overlay">Drop a .sql file to visualize it</div>}
         {toast && (
           <div className="toast" role="status">
@@ -458,57 +479,62 @@ function Viewer() {
             <Background variant={BackgroundVariant.Dots} gap={20} size={1} />
             <Controls showInteractive={false} />
             <MiniMap pannable zoomable nodeColor={(n) => (neighbours?.has(n.id) ? EDGE_COLORS[theme].active : EDGE_COLORS[theme].idle)} />
-            <Panel position="top-left">
-              <button
-                className={sidebarOpen ? 'icon-btn' : 'icon-btn icon-btn--on'}
-                onClick={toggleSidebar}
-                aria-label={sidebarOpen ? 'Hide sidebar' : 'Show sidebar'}
-                aria-expanded={sidebarOpen}
-                title={`${sidebarOpen ? 'Hide' : 'Show'} sidebar ([)`}
-              >
-                <SidebarIcon />
-              </button>
-            </Panel>
-            <Panel position="top-right" className="toolbar">
-              <button
-                className={focus ? 'btn btn--on' : 'btn'}
-                aria-pressed={focus}
-                onClick={() => setFocus((f) => !f)}
-                title="Show only the selected table and the tables related to it (F)"
-              >
-                Focus
-              </button>
-              <button className="btn" onClick={() => setAllExpanded(true)}>
-                Expand all
-              </button>
-              <button className="btn" onClick={() => setAllExpanded(false)}>
-                Collapse all
-              </button>
-              <button className="btn" onClick={() => arrange(expanded)} title="Re-run the automatic layout">
-                Arrange
-              </button>
-              <ExportMenu
-                disabled={!schema.tables.length}
-                scope={focusSet ? `Only the ${focusSet.size} tables in focus` : 'All tables'}
-                onDownload={download}
-                onCopy={copy}
-              />
-              <button className="icon-btn" onClick={toggleTheme} aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`}>
-                {theme === 'dark' ? <SunIcon /> : <MoonIcon />}
-              </button>
-              {/* Only offered while a table is selected: otherwise there are no details to show */}
-              {selected && (
-                <button
-                  className={detailsOpen ? 'icon-btn' : 'icon-btn icon-btn--on'}
-                  onClick={toggleDetails}
-                  aria-label={detailsOpen ? 'Hide details panel' : 'Show details panel'}
-                  aria-expanded={detailsOpen}
-                  title={`${detailsOpen ? 'Hide' : 'Show'} table details (])`}
-                >
-                  <DetailsPanelIcon />
-                </button>
-              )}
-            </Panel>
+            {/* Phones get the MobileNav bar instead */}
+            {!phone && (
+              <>
+                <Panel position="top-left">
+                  <button
+                    className={sidebarOpen ? 'icon-btn' : 'icon-btn icon-btn--on'}
+                    onClick={toggleSidebar}
+                    aria-label={sidebarOpen ? 'Hide sidebar' : 'Show sidebar'}
+                    aria-expanded={sidebarOpen}
+                    title={`${sidebarOpen ? 'Hide' : 'Show'} sidebar ([)`}
+                  >
+                    <SidebarIcon />
+                  </button>
+                </Panel>
+                <Panel position="top-right" className="toolbar">
+                  <button
+                    className={focus ? 'btn btn--on' : 'btn'}
+                    aria-pressed={focus}
+                    onClick={() => setFocus((f) => !f)}
+                    title="Show only the selected table and the tables related to it (F)"
+                  >
+                    Focus
+                  </button>
+                  <button className="btn" onClick={() => setAllExpanded(true)}>
+                    Expand all
+                  </button>
+                  <button className="btn" onClick={() => setAllExpanded(false)}>
+                    Collapse all
+                  </button>
+                  <button className="btn" onClick={() => arrange(expanded)} title="Re-run the automatic layout">
+                    Arrange
+                  </button>
+                  <ExportMenu
+                    disabled={!schema.tables.length}
+                    scope={focusSet ? `Only the ${focusSet.size} tables in focus` : 'All tables'}
+                    onDownload={download}
+                    onCopy={copy}
+                  />
+                  <button className="icon-btn" onClick={toggleTheme} aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`}>
+                    {theme === 'dark' ? <SunIcon /> : <MoonIcon />}
+                  </button>
+                  {/* Only offered while a table is selected: otherwise there are no details to show */}
+                  {selected && (
+                    <button
+                      className={detailsOpen ? 'icon-btn' : 'icon-btn icon-btn--on'}
+                      onClick={toggleDetails}
+                      aria-label={detailsOpen ? 'Hide details panel' : 'Show details panel'}
+                      aria-expanded={detailsOpen}
+                      title={`${detailsOpen ? 'Hide' : 'Show'} table details (])`}
+                    >
+                      <DetailsPanelIcon />
+                    </button>
+                  )}
+                </Panel>
+              </>
+            )}
             <Panel position="bottom-center" className="legend">
               <span>
                 <MarkerSample end="many" /> many
@@ -562,7 +588,8 @@ function Viewer() {
 }
 
 /** Matches the phone layout breakpoint in styles.css. */
-const isPhone = () => matchMedia('(max-width: 800px)').matches;
+const PHONE_QUERY = '(max-width: 800px)';
+const isPhone = () => matchMedia(PHONE_QUERY).matches;
 
 /** Touch screens fire hover on tap and never end it, so hover effects are mouse/trackpad only. */
 const canHover = () => matchMedia('(hover: hover)').matches;
