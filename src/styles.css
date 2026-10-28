@@ -127,6 +127,13 @@ code,
   cursor: progress;
 }
 
+.btn--on {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 600;
+}
+
 .btn--primary {
   background: var(--accent);
   border-color: var(--accent);
