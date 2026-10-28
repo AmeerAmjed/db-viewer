@@ -836,7 +836,8 @@ button.badge--fk {
   top: 0;
   left: 0;
   right: 0;
-  z-index: 20;
+  /* above the details sheet (45) so the ⋮ menu isn't hidden behind it; below the drawer (55+) */
+  z-index: 50;
   height: 52px;
   box-sizing: border-box;
   align-items: center;
