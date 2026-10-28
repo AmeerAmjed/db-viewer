@@ -1,6 +1,6 @@
 # <img src="public/favicon.svg" width="32" height="32" align="top" alt=""> DB Viewer
 
-**Paste SQL, get an ER diagram.** Explore a Postgres or Supabase schema as an interactive diagram, right in your browser.
+**Paste SQL, get an ER diagram.** Turn a Postgres or Supabase schema into an interactive diagram: explore tables and relations, focus on one table, and export to PNG, SQL, Mermaid or DBML. Free, no sign-up, runs entirely in your browser.
 
 **[Open DB Viewer →](https://ameeramjed.github.io/db-viewer/)**
 
