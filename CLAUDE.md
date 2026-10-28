@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-Superbase Viewer: a local web app that draws a Postgres/Supabase schema as an interactive ER diagram. Tables start collapsed and expand to show columns and types. Foreign keys are drawn as edges. Selecting a table opens a detail panel listing "references" and "referenced by". The diagram exports to PNG or SVG and has a light/dark theme. Stack: Vite + React 19 + TypeScript, `@xyflow/react` (React Flow 12) for the canvas, `@dagrejs/dagre` for auto-layout, `html-to-image` for export.
+DB Viewer: a web app that draws a Postgres/Supabase schema as an interactive ER diagram, hosted at https://ameeramjed.github.io/db-viewer/ (repo `AmeerAmjed/db-viewer`). Tables start collapsed and expand to show columns and types. Foreign keys are drawn as edges. Selecting a table opens a detail panel listing "references" and "referenced by". The diagram exports to PNG, SVG, SQL, Mermaid, DBML and JSON and has a light/dark theme. Stack: Vite + React 19 + TypeScript, `@xyflow/react` (React Flow 12) for the canvas, `@dagrejs/dagre` for auto-layout, `html-to-image` for export.
 
 ## Commands
 

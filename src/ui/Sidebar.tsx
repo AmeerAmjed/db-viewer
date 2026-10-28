@@ -27,7 +27,7 @@ export default function Sidebar(props: Props) {
     // Hidden rather than unmounted so the search, SQL draft and connect form survive toggling
     <aside className="sidebar" hidden={!props.open}>
       <header className="sidebar-head">
-        <h1>Superbase Viewer</h1>
+        <h1>DB Viewer</h1>
         <p className="muted">
           {own} tables · {schema.relations.length} relations · from {sourceLabel}
         </p>
