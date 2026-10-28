@@ -355,6 +355,83 @@ code,
   pointer-events: none;
 }
 
+.export {
+  position: relative;
+}
+
+.export-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 220px;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--panel);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.3);
+}
+
+.export-group {
+  display: flex;
+  flex-direction: column;
+}
+
+.export-group + .export-group {
+  padding-top: 6px;
+  border-top: 1px solid var(--border);
+}
+
+.export-heading {
+  padding: 4px 8px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.export-item {
+  display: flex;
+  justify-content: space-between;
+  padding: 7px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+}
+
+.export-item:hover,
+.export-item:focus-visible {
+  background: var(--accent-soft);
+  outline: none;
+}
+
+.export-scope {
+  margin: 0;
+  padding: 4px 8px 2px;
+  border-top: 1px solid var(--border);
+  font-size: 11px;
+}
+
+.toast {
+  position: absolute;
+  top: 64px;
+  left: 50%;
+  z-index: 40;
+  transform: translateX(-50%);
+  padding: 8px 14px;
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  background: var(--panel);
+  font-size: 13px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+}
+
 .link-btn {
   padding: 0;
   border: 0;

@@ -13,7 +13,7 @@ import {
   type NodePositionChange,
 } from '@xyflow/react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { exportDiagram } from './diagram/exportImage';
+import { copyDiagram, downloadDiagram, downloadText } from './diagram/exportImage';
 import { layoutSchema } from './diagram/layout';
 import RelationCard from './diagram/RelationCard';
 import RelationEdge, { type RelationEdgeType } from './diagram/RelationEdge';
@@ -27,10 +27,12 @@ import TableNode, {
 } from './diagram/TableNode';
 import type { Schema } from './schema/model';
 import example from './schema/example.sql?raw';
+import { subset, toDbml, toJson, toMermaid, toSql } from './schema/exporters';
 import { parseOpenApi } from './schema/openApi';
 import { parseSql } from './schema/sqlParser';
 import { load, save } from './storage';
 import DetailPanel from './ui/DetailPanel';
+import ExportMenu, { type CopyFormat, type ExportFormat } from './ui/ExportMenu';
 import { DetailsPanelIcon, MoonIcon, SidebarIcon, SunIcon } from './ui/icons';
 import Sidebar from './ui/Sidebar';
 import { useTheme } from './ui/useTheme';
@@ -43,6 +45,14 @@ const NO_COLUMNS: ReadonlySet<string> = new Set();
 const EDGE_COLORS = {
   light: { idle: '#a1a1aa', active: '#16a34a' },
   dark: { idle: '#52525b', active: '#3ecf8e' },
+};
+
+type TextFormat = 'sql' | 'mermaid' | 'dbml' | 'json';
+const TEXT_EXPORTERS: Record<TextFormat, { label: string; ext: string; mime: string; render: (s: Schema) => string }> = {
+  sql: { label: 'SQL', ext: 'sql', mime: 'application/sql', render: toSql },
+  mermaid: { label: 'Mermaid', ext: 'mmd', mime: 'text/plain', render: toMermaid },
+  dbml: { label: 'DBML', ext: 'dbml', mime: 'text/plain', render: toDbml },
+  json: { label: 'JSON', ext: 'json', mime: 'application/json', render: toJson },
 };
 
 export default function App() {
@@ -321,6 +331,43 @@ function Viewer() {
 
   const selected = schema.tables.find((t) => t.id === selectedId);
 
+  const [toast, setToast] = useState<string | null>(null);
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 2500);
+    return () => clearTimeout(t);
+  }, [toast]);
+
+  // Every export follows what's on screen: in focus mode, only the focused tables
+  const visibleNodes = () => viewNodes.filter((n) => !n.hidden);
+  const exportText = (format: TextFormat) => TEXT_EXPORTERS[format].render(subset(schema, focusSet ?? undefined));
+  const baseName = sourceLabel === 'pasted SQL' ? 'schema' : sourceLabel.replace(/\.[^.]+$/, '').replace(/[^\w-]+/g, '-');
+
+  const download = async (format: ExportFormat) => {
+    try {
+      if (format === 'png' || format === 'svg') {
+        await downloadDiagram(visibleNodes(), format, baseName);
+        setToast(`Downloaded ${baseName}.${format}`);
+      } else {
+        const { ext, mime } = TEXT_EXPORTERS[format];
+        downloadText(exportText(format), `${baseName}.${ext}`, mime);
+        setToast(`Downloaded ${baseName}.${ext}`);
+      }
+    } catch (err) {
+      setToast(`Export failed: ${(err as Error).message}`);
+    }
+  };
+
+  const copy = async (format: CopyFormat) => {
+    try {
+      if (format === 'image') await copyDiagram(visibleNodes());
+      else await navigator.clipboard.writeText(exportText(format));
+      setToast(`Copied ${format === 'image' ? 'image' : TEXT_EXPORTERS[format].label} to clipboard`);
+    } catch (err) {
+      setToast(`Copy failed: ${(err as Error).message}`);
+    }
+  };
+
   const cardPosition = (() => {
     if (hoveredRelation && hoveredEdge) return hoveredEdge;
     if (!lineRelation || !pinnedEdge || !canvasRef.current) return null;
@@ -363,6 +410,11 @@ function Viewer() {
         }}
       >
         {dropping && <div className="drop-overlay">Drop a .sql file to visualize it</div>}
+        {toast && (
+          <div className="toast" role="status">
+            {toast}
+          </div>
+        )}
         <ToggleTableContext.Provider value={toggleTable}>
           <ReactFlow
             nodes={viewNodes}
@@ -424,12 +476,12 @@ function Viewer() {
               <button className="btn" onClick={() => arrange(expanded)} title="Re-run the automatic layout">
                 Arrange
               </button>
-              <button className="btn" onClick={() => exportDiagram(viewNodes.filter((n) => !n.hidden), 'png')}>
-                PNG
-              </button>
-              <button className="btn" onClick={() => exportDiagram(viewNodes.filter((n) => !n.hidden), 'svg')}>
-                SVG
-              </button>
+              <ExportMenu
+                disabled={!schema.tables.length}
+                scope={focusSet ? `Only the ${focusSet.size} tables in focus` : 'All tables'}
+                onDownload={download}
+                onCopy={copy}
+              />
               <button className="icon-btn" onClick={toggleTheme} aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`}>
                 {theme === 'dark' ? <SunIcon /> : <MoonIcon />}
               </button>
