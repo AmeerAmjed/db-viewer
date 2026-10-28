@@ -5,6 +5,8 @@ export interface Column {
   primary: boolean;
   unique: boolean;
   identity: boolean;
+  /** The text after GENERATED for identity columns, e.g. `ALWAYS AS IDENTITY`. */
+  generated?: string;
   default?: string;
   check?: string;
 }

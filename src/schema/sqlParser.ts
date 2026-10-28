@@ -95,7 +95,8 @@ function parseColumn(table: Table, def: string, fks: PendingForeignKey[]): Colum
         break;
       case 'GENERATED':
         col.identity = /\bIDENTITY\b/i.test(body);
-        if (!col.identity) col.default = `GENERATED ${body}`;
+        if (col.identity) col.generated = body;
+        else col.default = `GENERATED ${body}`;
         break;
       case 'REFERENCES':
         fks.push({ ...parseReferenceTarget(body), from: table.id, fromColumns: [name] });
