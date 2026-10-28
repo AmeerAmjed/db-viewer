@@ -340,6 +340,21 @@ code,
   justify-content: flex-end;
 }
 
+.drop-overlay {
+  position: absolute;
+  inset: 12px;
+  z-index: 20;
+  display: grid;
+  place-items: center;
+  border: 2px dashed var(--accent);
+  border-radius: 12px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 16px;
+  font-weight: 600;
+  pointer-events: none;
+}
+
 .link-btn {
   padding: 0;
   border: 0;

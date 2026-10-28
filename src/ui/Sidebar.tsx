@@ -1,4 +1,4 @@
-import { useMemo, useState, type FormEvent } from 'react';
+import { useMemo, useRef, useState, type DragEvent, type FormEvent } from 'react';
 import type { Schema } from '../schema/model';
 import { load } from '../storage';
 
@@ -13,6 +13,7 @@ interface Props {
   onSelect: (id: string) => void;
   onApplySql: (sql: string) => void;
   onLoadExample: () => void;
+  onImportFile: (file: File) => Promise<void>;
   onConnect: (url: string, key: string) => Promise<void>;
 }
 
@@ -48,6 +49,10 @@ export default function Sidebar(props: Props) {
           }}
           onLoadExample={() => {
             props.onLoadExample();
+            setTab('tables');
+          }}
+          onImportFile={async (file) => {
+            await props.onImportFile(file);
             setTab('tables');
           }}
         />
@@ -113,13 +118,23 @@ function TablesTab({ schema, selectedId, onSelect }: Props) {
   );
 }
 
-function SqlTab({ sql, schema, onApplySql, onLoadExample }: Props) {
+const SQL_FILE_TYPES = '.sql,.psql,.pgsql,.txt,text/plain,application/sql';
+
+function SqlTab({ sql, schema, onApplySql, onLoadExample, onImportFile }: Props) {
   const [draft, setDraft] = useState(sql);
+  const fileInput = useRef<HTMLInputElement>(null);
+  const dropFile = (e: DragEvent) => {
+    const file = e.dataTransfer.files[0];
+    if (!file) return; // plain dragged text falls through to the textarea
+    e.preventDefault();
+    void onImportFile(file);
+  };
+
   return (
     <div className="tab-body">
       <p className="muted small">
-        Paste <code>CREATE TABLE</code> statements (Supabase "Schema for context", pg_dump, migrations). Pasting renders the diagram
-        right away.
+        Paste, drop or import <code>CREATE TABLE</code> statements (Supabase "Schema for context", pg_dump, migrations). Pasting
+        renders the diagram right away.
       </p>
       <textarea
         className="sql-input"
@@ -131,10 +146,26 @@ function SqlTab({ sql, schema, onApplySql, onLoadExample }: Props) {
           const el = e.currentTarget;
           setTimeout(() => onApplySql(el.value));
         }}
+        onDragOver={(e) => e.dataTransfer.types.includes('Files') && e.preventDefault()}
+        onDrop={dropFile}
+      />
+      <input
+        ref={fileInput}
+        type="file"
+        accept={SQL_FILE_TYPES}
+        hidden
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          e.target.value = ''; // lets the same file be picked again
+          if (file) void onImportFile(file);
+        }}
       />
       <div className="row">
         <button className="btn btn--primary" onClick={() => onApplySql(draft)}>
           Visualize
+        </button>
+        <button className="btn" onClick={() => fileInput.current?.click()}>
+          Import .sql file
         </button>
         <button className="btn" onClick={onLoadExample} title="A small made-up blog schema">
           Load example

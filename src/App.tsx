@@ -96,6 +96,25 @@ function Viewer() {
     [showSchema],
   );
 
+  const importFile = useCallback(async (file: File) => applySql(await file.text(), file.name), [applySql]);
+
+  // Dropping a .sql file on the diagram imports it
+  const [dropping, setDropping] = useState(false);
+  const hasFiles = (e: React.DragEvent) => e.dataTransfer.types.includes('Files');
+
+  useEffect(() => {
+    // A file dropped anywhere else would make the browser navigate away to it
+    const block = (e: DragEvent) => {
+      if (e.dataTransfer?.types.includes('Files')) e.preventDefault();
+    };
+    window.addEventListener('dragover', block);
+    window.addEventListener('drop', block);
+    return () => {
+      window.removeEventListener('dragover', block);
+      window.removeEventListener('drop', block);
+    };
+  }, []);
+
   const connect = useCallback(
     async (url: string, key: string) => {
       const res = await fetch('/api/introspect', {
@@ -321,9 +340,29 @@ function Viewer() {
         onSelect={focusTable}
         onApplySql={applySql}
         onLoadExample={() => applySql(example, 'example')}
+        onImportFile={importFile}
         onConnect={connect}
       />
-      <main className="canvas" ref={canvasRef}>
+      <main
+        className="canvas"
+        ref={canvasRef}
+        onDragOver={(e) => {
+          if (!hasFiles(e)) return;
+          e.preventDefault();
+          setDropping(true);
+        }}
+        onDragLeave={(e) => {
+          if (!e.currentTarget.contains(e.relatedTarget as Node)) setDropping(false);
+        }}
+        onDrop={(e) => {
+          if (!hasFiles(e)) return;
+          e.preventDefault();
+          setDropping(false);
+          const file = e.dataTransfer.files[0];
+          if (file) void importFile(file);
+        }}
+      >
+        {dropping && <div className="drop-overlay">Drop a .sql file to visualize it</div>}
         <ToggleTableContext.Provider value={toggleTable}>
           <ReactFlow
             nodes={viewNodes}
@@ -423,7 +462,7 @@ function Viewer() {
             )}
             {!schema.tables.length && (
               <Panel position="top-center" className="empty">
-                No tables found. Paste SQL or connect a Supabase project from the sidebar, or{' '}
+                No tables found. Paste or drop a .sql file, connect a Supabase project from the sidebar, or{' '}
                 <button className="link-btn" onClick={() => applySql(example, 'example')}>
                   load an example
                 </button>
