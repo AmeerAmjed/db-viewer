@@ -17,9 +17,16 @@
 - **Search** tables and columns from the sidebar.
 - **Export and copy.** Download as PNG, SVG, SQL, [Mermaid](https://mermaid.js.org/syntax/entityRelationshipDiagram.html), [DBML](https://dbml.dbdiagram.io/) or JSON, or copy the image, SQL, Mermaid or DBML to the clipboard. In focus mode, only what's on screen is exported.
 - **Light and dark themes**, and both side panels can be hidden for a full-screen diagram.
+- **Works on your phone** with a touch-friendly layout (see below).
 - **Private by design.** Everything runs in your browser. Your SQL is never uploaded anywhere; it's only remembered in your own browser so it's still there next time.
 
 ![Focus mode in the light theme with a relation's details pinned](docs/focus-light.png)
+
+## On your phone
+
+The diagram fills the screen under a compact nav bar. The table list slides in as a drawer, table details open as a bottom sheet, and every view, download and copy option lives in the ⋮ menu. Tap a line to pin its details.
+
+![DB Viewer on a phone: the full-screen diagram, the sidebar drawer, the details bottom sheet and the ⋮ menu](docs/mobile.png)
 
 ## Keyboard shortcuts
 
