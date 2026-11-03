@@ -678,7 +678,7 @@ function Viewer() {
             onToggleTheme={toggleTheme}
             details={selected ? { open: detailsOpen, onToggle: toggleDetails } : null}
             canExport={schema.tables.length > 0}
-            exportScope={focusSet ? `Only the ${focusSet.size} tables in focus` : 'All tables'}
+            exportScope={focusSet ? `Only the ${focusSet.size.toLocaleString()} tables in focus` : 'All tables'}
             onDownload={download}
             onCopy={copy}
           />
@@ -782,7 +782,7 @@ function Viewer() {
                   </button>
                   <ExportMenu
                     disabled={!schema.tables.length}
-                    scope={focusSet ? `Only the ${focusSet.size} tables in focus` : 'All tables'}
+                    scope={focusSet ? `Only the ${focusSet.size.toLocaleString()} tables in focus` : 'All tables'}
                     onDownload={download}
                     onCopy={copy}
                   />

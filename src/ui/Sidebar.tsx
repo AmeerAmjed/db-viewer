@@ -44,7 +44,7 @@ export default function Sidebar(props: Props) {
           </button>
         </h1>
         <p className="muted">
-          {own} tables · {schema.relations.length} relations · from {sourceLabel}
+          {own.toLocaleString()} tables · {schema.relations.length.toLocaleString()} relations · from {sourceLabel}
         </p>
       </header>
       <nav className="tabs" role="tablist">

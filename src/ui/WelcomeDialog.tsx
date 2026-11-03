@@ -97,7 +97,7 @@ export default function WelcomeDialog(props: Props) {
             <span>
               <b>Continue with {current.label}</b>
               <span className="muted small">
-                {current.tables} tables{current.saved ? ' · saved on this device' : current.unsaved ? ` · ${current.unsaved}` : ''}
+                {current.tables.toLocaleString()} tables{current.saved ? ' · saved on this device' : current.unsaved ? ` · ${current.unsaved}` : ''}
               </span>
             </span>
             <span aria-hidden="true">→</span>
