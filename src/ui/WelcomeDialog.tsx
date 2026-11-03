@@ -7,7 +7,7 @@ interface Props {
   open: boolean;
   onClose: () => void;
   /** The schema already on screen (restored from this device or loaded earlier), if any. */
-  current: { label: string; tables: number; saved: boolean } | null;
+  current: { label: string; tables: number; saved: boolean; /** Why it couldn't be saved, when Remember is on. */ unsaved: string | null } | null;
   remember: boolean;
   onRememberChange: (on: boolean) => void;
   /** Throws when the SQL holds no tables. */
@@ -97,7 +97,7 @@ export default function WelcomeDialog(props: Props) {
             <span>
               <b>Continue with {current.label}</b>
               <span className="muted small">
-                {current.tables} tables{current.saved ? ' · saved on this device' : ''}
+                {current.tables} tables{current.saved ? ' · saved on this device' : current.unsaved ? ` · ${current.unsaved}` : ''}
               </span>
             </span>
             <span aria-hidden="true">→</span>
@@ -191,7 +191,7 @@ export default function WelcomeDialog(props: Props) {
             <input type="checkbox" checked={props.remember} onChange={(e) => props.onRememberChange(e.target.checked)} />
             Remember the schema on this device
           </label>
-          <p className="muted small">Kept in this browser only and loaded on your next visit. Unchecking deletes the saved copy.
+          <p className="muted small">Kept in this browser only and loaded on your next visit. Browsers keep about 5 MB per site, so larger schemas can't be remembered. Unchecking deletes the saved copy.
             {CAN_CONNECT && ' A connected project is only kept until this tab closes, and its API key is never stored.'}</p>
         </footer>
       </div>

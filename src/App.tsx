@@ -137,10 +137,23 @@ function Viewer() {
 
   // Whether the SQL on screen is in localStorage: a large schema can be past the storage quota
   const [stored, setStored] = useState(() => load('sv.sql') !== null);
+  // Why the SQL on screen couldn't be stored, for the dialog to say so next to it
+  const [unsaved, setUnsaved] = useState<string | null>(null);
   const storeSql = (text: string, label: string) => {
     const ok = save('sv.sql', text) && save('sv.label', label);
-    if (!ok) remove('sv.sql'); // never leave a copy that doesn't match its label
     setStored(ok);
+    setUnsaved(null);
+    if (ok) return;
+    remove('sv.sql'); // never leave a copy that doesn't match its label
+    // save() can't say why it failed; past the quota is by far the likelier reason for big SQL
+    const tooBig = text.length > STORAGE_QUOTA_BYTES;
+    setUnsaved(tooBig ? 'too large to save on this device' : 'browser storage is blocked');
+    notify(
+      tooBig
+        ? `Couldn't remember ${label} on this device: at ${Math.round(text.length / 1024 / 1024)} MB it's over the browser's storage limit of about 5 MB.`
+        : `Couldn't remember ${label}: this browser is blocking site storage.`,
+      6000,
+    );
   };
 
   const applySql = useCallback(
@@ -173,6 +186,7 @@ function Viewer() {
       removeSession('sv.session');
       remove('sv.connected');
       if (remember) storeSql(text, label);
+      else setUnsaved(null);
       showSchema(next, label);
     },
     [showSchema, remember],
@@ -187,6 +201,7 @@ function Viewer() {
       remove('sv.sql');
       remove('sv.label');
       setStored(false);
+      setUnsaved(null);
     }
   };
 
@@ -846,7 +861,7 @@ function Viewer() {
         onClose={() => setWelcomeOpen(false)}
         current={
           schema.tables.length
-            ? { label: sourceLabel, tables: ownTables, saved: remember && stored && shownSql.current !== null }
+            ? { label: sourceLabel, tables: ownTables, saved: remember && stored && shownSql.current !== null, unsaved: shownSql.current && unsaved }
             : null
         }
         remember={remember}
@@ -900,6 +915,8 @@ function restore(): { schema: Schema; label: string; connected: boolean; reconne
 const MAX_SQL_BYTES = 128 * 1024 * 1024;
 /** Files above this are slow enough to read and parse that the steps get a loading message. */
 const LARGE_FILE_BYTES = 256 * 1024;
+/** About what browsers let one site keep in localStorage (Chrome refuses 5 MB of text). */
+const STORAGE_QUOTA_BYTES = 4.5 * 1024 * 1024;
 
 /** Schemas past the dagre limit take long enough to draw that they get a loading message. */
 const isLarge = (schema: Schema) => schema.tables.length > DAGRE_LIMIT;
