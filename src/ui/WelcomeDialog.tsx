@@ -10,6 +10,7 @@ interface Props {
   current: { label: string; tables: number; saved: boolean } | null;
   remember: boolean;
   onRememberChange: (on: boolean) => void;
+  /** Throws when the SQL holds no tables. */
   onApplySql: (sql: string) => void;
   onLoadExample: () => void;
   onImportFile: (file: File) => Promise<void>;
@@ -17,6 +18,8 @@ interface Props {
   initialTab: 'sql' | 'connect';
   /** The app's toast, shown in the dialog while it covers the canvas. */
   toast: string | null;
+  /** The app's loading message, shown the same way. */
+  busy: string | null;
 }
 
 /** Shown on every launch, and again from "Open schema": continue, paste, drop or import a schema. */
@@ -26,12 +29,14 @@ export default function WelcomeDialog(props: Props) {
   const fileInput = useRef<HTMLInputElement>(null);
   const [draft, setDraft] = useState('');
   const [dragging, setDragging] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<'sql' | 'connect'>(CAN_CONNECT ? props.initialTab : 'sql');
 
   // showModal() gives the focus trap, Escape and the top layer for free
   useEffect(() => {
     const el = ref.current!;
     if (open && !el.open) {
+      setError(null); // a failed load from an earlier opening is no longer relevant
       el.showModal();
       // showModal() focuses the first button (Close); start on Continue, the SQL box or the API key instead
       el.querySelector<HTMLElement>('.welcome-resume, .welcome-sql, input[type=password]')?.focus();
@@ -39,16 +44,19 @@ export default function WelcomeDialog(props: Props) {
     if (!open && el.open) el.close();
   }, [open]);
 
-  const done = (load: () => void) => {
-    load();
+  // Loading throws when the text holds no tables; the dialog then stays open with the message
+  const done = async (load: () => void | Promise<void>) => {
+    setError(null);
+    try {
+      await load();
+    } catch (err) {
+      setError((err as Error).message);
+      return;
+    }
     setDraft('');
     onClose();
   };
-  const importFile = async (file: File) => {
-    await props.onImportFile(file);
-    setDraft('');
-    onClose();
-  };
+  const importFile = (file: File) => done(() => props.onImportFile(file));
   const hasFiles = (e: DragEvent) => e.dataTransfer.types.includes('Files');
 
   return (
@@ -71,10 +79,17 @@ export default function WelcomeDialog(props: Props) {
           </button>
         </header>
         <p className="muted">Open a Postgres or Supabase schema to draw it as an ER diagram.</p>
-        {props.toast && (
-          <p className="welcome-toast" role="status">
-            {props.toast}
+        {props.busy ? (
+          <p className="welcome-toast welcome-busy" role="status">
+            <span className="spinner" aria-hidden="true" />
+            {props.busy}
           </p>
+        ) : (
+          props.toast && (
+            <p className="welcome-toast" role="status">
+              {props.toast}
+            </p>
+          )
         )}
 
         {current && (
@@ -105,15 +120,18 @@ export default function WelcomeDialog(props: Props) {
               className="sql-input welcome-sql"
               spellCheck={false}
               value={draft}
-              placeholder={'Paste CREATE TABLE statements…\n\nSupabase “Schema for context”, pg_dump or migrations'}
+              placeholder={'Paste CREATE TABLE statements, then press Visualize…\n\nSupabase “Schema for context”, pg_dump or migrations'}
               aria-label="SQL schema"
-                onChange={(e) => setDraft(e.target.value)}
-              // Pasting renders the diagram right away, as in the sidebar
-              onPaste={(e) => {
-                const el = e.currentTarget;
-                setTimeout(() => el.value.trim() && done(() => props.onApplySql(el.value)));
+              onChange={(e) => {
+                setDraft(e.target.value);
+                setError(null);
               }}
             />
+            {error && (
+              <p className="error" role="alert">
+                {error}
+              </p>
+            )}
 
             <div
               className={dragging ? 'welcome-drop welcome-drop--on' : 'welcome-drop'}
@@ -151,10 +169,10 @@ export default function WelcomeDialog(props: Props) {
             </div>
 
             <div className="row">
-              <button className="btn btn--primary" onClick={() => draft.trim() && done(() => props.onApplySql(draft))}>
+              <button className="btn btn--primary" onClick={() => void done(() => props.onApplySql(draft))}>
                 Visualize
               </button>
-              <button className="btn" onClick={() => done(props.onLoadExample)} title="A small made-up blog schema">
+              <button className="btn" onClick={() => void done(props.onLoadExample)} title="A small made-up blog schema">
                 Load example
               </button>
             </div>

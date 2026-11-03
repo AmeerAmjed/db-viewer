@@ -1,5 +1,5 @@
 import { Handle, Position, useUpdateNodeInternals, type Node, type NodeProps } from '@xyflow/react';
-import { createContext, memo, useContext, useEffect } from 'react';
+import { createContext, memo, useContext, useEffect, useRef } from 'react';
 import type { Table } from '../schema/model';
 import { ColumnIcon, Chevron } from '../ui/icons';
 import { NODE_WIDTH } from './layout';
@@ -39,7 +39,14 @@ function TableNode({ id, data }: NodeProps<TableNodeType>) {
   const updateNodeInternals = useUpdateNodeInternals();
 
   // Column handles move between header and rows on expansion; React Flow must re-measure them.
-  useEffect(() => updateNodeInternals(id), [expanded, id, updateNodeInternals]);
+  // Not on mount: React Flow measures new nodes itself, and one store update per mounted table
+  // re-renders every other table, which is quadratic on large schemas.
+  const measuredExpanded = useRef(expanded);
+  useEffect(() => {
+    if (measuredExpanded.current === expanded) return;
+    measuredExpanded.current = expanded;
+    updateNodeInternals(id);
+  }, [expanded, id, updateNodeInternals]);
 
   const className = ['tn', active && 'tn--active', dimmed && 'tn--dimmed', table.external && 'tn--external']
     .filter(Boolean)

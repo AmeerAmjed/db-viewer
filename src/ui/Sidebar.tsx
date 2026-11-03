@@ -14,6 +14,7 @@ interface Props {
   sql: string;
   selectedId: string | null;
   onSelect: (id: string) => void;
+  /** Throws when the SQL holds no tables. */
   onApplySql: (sql: string) => void;
   onLoadExample: () => void;
   onImportFile: (file: File) => Promise<void>;
@@ -59,7 +60,7 @@ export default function Sidebar(props: Props) {
           key={props.sql}
           {...props}
           onApplySql={(sql) => {
-            props.onApplySql(sql);
+            props.onApplySql(sql); // throws on text without tables, keeping the SQL tab open
             setTab('tables');
           }}
           onLoadExample={() => {
@@ -84,6 +85,8 @@ export default function Sidebar(props: Props) {
   );
 }
 
+const LIST_LIMIT = 500;
+
 function TablesTab({ schema, selectedId, onSelect }: Props) {
   const [query, setQuery] = useState('');
   const counts = useMemo(() => {
@@ -96,10 +99,14 @@ function TablesTab({ schema, selectedId, onSelect }: Props) {
     return out;
   }, [schema]);
 
+  const sorted = useMemo(
+    () => [...schema.tables].sort((a, b) => Number(a.external) - Number(b.external) || a.name.localeCompare(b.name)),
+    [schema],
+  );
   const q = query.trim().toLowerCase();
-  const tables = [...schema.tables]
-    .filter((t) => !q || t.id.includes(q) || t.columns.some((c) => c.name.toLowerCase().includes(q)))
-    .sort((a, b) => Number(a.external) - Number(b.external) || a.name.localeCompare(b.name));
+  const matches = q ? sorted.filter((t) => t.id.includes(q) || t.columns.some((c) => c.name.toLowerCase().includes(q))) : sorted;
+  // Tens of thousands of rows stall the page; past the cap, searching narrows the list
+  const tables = matches.slice(0, LIST_LIMIT);
 
   return (
     <div className="tab-body">
@@ -127,6 +134,11 @@ function TablesTab({ schema, selectedId, onSelect }: Props) {
             </li>
           );
         })}
+        {matches.length > tables.length && (
+          <li className="muted pad">
+            Showing {tables.length.toLocaleString()} of {matches.length.toLocaleString()} tables. Search to find the rest.
+          </li>
+        )}
         {!tables.length && <li className="muted pad">{schema.tables.length ? 'No matches' : `No tables yet. Paste SQL${CAN_CONNECT ? ' or connect a project' : ''}.`}</li>}
       </ul>
     </div>
@@ -137,29 +149,37 @@ export const SQL_FILE_TYPES = '.sql,.psql,.pgsql,.txt,text/plain,application/sql
 
 function SqlTab({ sql, schema, onApplySql, onLoadExample, onImportFile }: Props) {
   const [draft, setDraft] = useState(sql);
+  const [error, setError] = useState<string | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
+  const apply = async (load: () => void | Promise<void>) => {
+    setError(null);
+    try {
+      await load();
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  };
   const dropFile = (e: DragEvent) => {
     const file = e.dataTransfer.files[0];
     if (!file) return; // plain dragged text falls through to the textarea
     e.preventDefault();
-    void onImportFile(file);
+    void apply(() => onImportFile(file));
   };
 
   return (
     <div className="tab-body">
       <p className="muted small">
-        Paste, drop or import <code>CREATE TABLE</code> statements (Supabase "Schema for context", pg_dump, migrations). Pasting
-        renders the diagram right away.
+        Paste, drop or import <code>CREATE TABLE</code> statements (Supabase "Schema for context", pg_dump, migrations), then
+        press Visualize.
       </p>
       <textarea
         className="sql-input"
         spellCheck={false}
         value={draft}
         placeholder="CREATE TABLE public.users (…);"
-        onChange={(e) => setDraft(e.target.value)}
-        onPaste={(e) => {
-          const el = e.currentTarget;
-          setTimeout(() => onApplySql(el.value));
+        onChange={(e) => {
+          setDraft(e.target.value);
+          setError(null);
         }}
         onDragOver={(e) => e.dataTransfer.types.includes('Files') && e.preventDefault()}
         onDrop={dropFile}
@@ -172,11 +192,16 @@ function SqlTab({ sql, schema, onApplySql, onLoadExample, onImportFile }: Props)
         onChange={(e) => {
           const file = e.target.files?.[0];
           e.target.value = ''; // lets the same file be picked again
-          if (file) void onImportFile(file);
+          if (file) void apply(() => onImportFile(file));
         }}
       />
+      {error && (
+        <p className="error" role="alert">
+          {error}
+        </p>
+      )}
       <div className="row">
-        <button className="btn btn--primary" onClick={() => onApplySql(draft)}>
+        <button className="btn btn--primary" onClick={() => void apply(() => onApplySql(draft))}>
           Visualize
         </button>
         <button className="btn" onClick={() => fileInput.current?.click()}>
@@ -185,7 +210,13 @@ function SqlTab({ sql, schema, onApplySql, onLoadExample, onImportFile }: Props)
         <button className="btn" onClick={onLoadExample} title="A small made-up blog schema">
           Load example
         </button>
-        <button className="btn" onClick={() => setDraft('')}>
+        <button
+          className="btn"
+          onClick={() => {
+            setDraft('');
+            setError(null);
+          }}
+        >
           Clear
         </button>
       </div>

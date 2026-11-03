@@ -14,7 +14,7 @@ import {
 } from '@xyflow/react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { copyDiagram, downloadDiagram, downloadText } from './diagram/exportImage';
-import { layoutSchema } from './diagram/layout';
+import { DAGRE_LIMIT, layoutSchema, NODE_WIDTH, nodeHeight } from './diagram/layout';
 import RelationCard from './diagram/RelationCard';
 import RelationEdge, { type RelationEdgeType } from './diagram/RelationEdge';
 import { MarkerSample, markerId, RelationMarkers } from './diagram/RelationMarkers';
@@ -44,6 +44,7 @@ import { useMediaQuery } from './ui/useDismiss';
 const nodeTypes = { table: TableNode };
 const edgeTypes = { relation: RelationEdge };
 const NO_COLUMNS: ReadonlySet<string> = new Set();
+const MINIMAP_LIMIT = 3000;
 // Edge colours are passed inline rather than via CSS variables: SVG strokes and fills set from
 // variables are lost when html-to-image exports the diagram.
 const EDGE_COLORS = {
@@ -83,6 +84,10 @@ function Viewer() {
     return stored ? stored === 'on' : load('sv.sql') !== null;
   });
   const [welcomeOpen, setWelcomeOpen] = useState(true);
+  // What a slow step on a large schema is doing; shown over the canvas (or in the dialog) until it ends
+  const [busy, setBusy] = useState<string | null>(() =>
+    isLarge(startup.schema) ? `Drawing ${startup.schema.tables.length.toLocaleString()} tables…` : null,
+  );
   // The SQL behind the diagram on screen; null for a connected project, which is never saved
   const shownSql = useRef<{ text: string; label: string } | null>(startup.connected || !sql ? null : { text: sql, label: sourceLabel });
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
@@ -115,6 +120,16 @@ function Viewer() {
 
   const applySql = useCallback(
     (text: string, label = 'pasted SQL') => {
+      // Check before touching state, so a bad paste or file leaves the current diagram alone
+      tooLarge(text.length);
+      const next = parseSql(text);
+      if (!next.tables.some((t) => !t.external)) {
+        // The parser's warnings say which statement it could not read
+        const why = next.warnings.slice(0, 3).map((w) => `\n• ${w}`).join('');
+        throw new Error(`No tables found. Paste or import CREATE TABLE statements (Supabase “Schema for context”, pg_dump or migrations).${why}`);
+      }
+      // Cleared by `arrange` once the new diagram has been drawn
+      if (isLarge(next)) setBusy(`Drawing ${next.tables.length.toLocaleString()} tables…`);
       setSql(text);
       shownSql.current = { text, label };
       removeSession('sv.session');
@@ -123,7 +138,7 @@ function Viewer() {
         save('sv.sql', text);
         save('sv.label', label);
       }
-      showSchema(parseSql(text), label);
+      showSchema(next, label);
     },
     [showSchema, remember],
   );
@@ -140,7 +155,27 @@ function Viewer() {
     }
   };
 
-  const importFile = useCallback(async (file: File) => applySql(await file.text(), file.name), [applySql]);
+  const importFile = useCallback(
+    async (file: File) => {
+      tooLarge(file.size); // before reading: a 1 GB file.text() alone can exhaust the tab's memory
+      // Reading and parsing a big file block the page, so show what's happening before each step
+      const step = async (label: string) => {
+        if (file.size < LARGE_FILE_BYTES) return;
+        setBusy(label);
+        await nextPaint();
+      };
+      try {
+        await step(`Reading ${file.name}…`);
+        const text = await file.text();
+        await step(`Parsing ${file.name}…`);
+        applySql(text, file.name);
+      } catch (err) {
+        setBusy(null);
+        throw err;
+      }
+    },
+    [applySql],
+  );
 
   // Dropping a .sql file on the diagram imports it
   const [dropping, setDropping] = useState(false);
@@ -187,17 +222,33 @@ function Viewer() {
           id: table.id,
           type: 'table',
           position: positions[table.id],
+          // Known sizes let React Flow cull and fit tables it hasn't rendered and measured yet
+          initialWidth: NODE_WIDTH,
+          initialHeight: nodeHeight(table, exp.has(table.id)),
           data: { table, expanded: false, dimmed: false, active: false, fkColumns: NO_COLUMNS, highlightColumns: NO_COLUMNS },
         })),
       );
-      // Let React Flow measure the new nodes before fitting
+      // Let React Flow measure the new nodes before fitting. The timer only fires once the drawing
+      // is done, so it also ends a loading message.
       // A phone's narrow screen would shrink a wide schema to unreadable; keep it legible and let it pan
-      setTimeout(() => fitView({ padding: 0.08, duration: 300, minZoom: isPhone() ? 0.45 : undefined }), 50);
+      setTimeout(() => {
+        setBusy(null);
+        fitView({ padding: 0.08, duration: 300, minZoom: isPhone() ? 0.45 : undefined });
+      }, 50);
     },
     [schema, setNodes, fitView],
   );
 
   useEffect(() => arrange(new Set()), [arrange]);
+
+  /** Runs `work` after painting `label`, on schemas big enough for it to freeze the page a while. */
+  const withBusy = async (label: string, work: () => void) => {
+    if (isLarge(schema)) {
+      setBusy(label);
+      await nextPaint();
+    }
+    work();
+  };
 
   // Expanding one table re-runs the layout so it doesn't overlap its neighbours, shifted so the
   // toggled table stays put on screen.
@@ -207,19 +258,25 @@ function Viewer() {
       if (!next.delete(id)) next.add(id);
       setExpanded(next);
       const positions = layoutSchema(schema, next);
-      const before = nodes.find((n) => n.id === id)?.position;
-      const dx = before ? before.x - positions[id].x : 0;
-      const dy = before ? before.y - positions[id].y : 0;
-      setNodes((ns) => ns.map((n) => ({ ...n, position: { x: positions[n.id].x + dx, y: positions[n.id].y + dy } })));
+      // Read `before` inside the updater rather than depending on `nodes`: this callback is the
+      // context value of every table, and a new one on each measured size re-renders them all.
+      setNodes((ns) => {
+        const before = ns.find((n) => n.id === id)?.position;
+        const dx = before ? before.x - positions[id].x : 0;
+        const dy = before ? before.y - positions[id].y : 0;
+        return ns.map((n) => ({ ...n, position: { x: positions[n.id].x + dx, y: positions[n.id].y + dy } }));
+      });
     },
-    [expanded, schema, nodes, setNodes],
+    [expanded, schema, setNodes],
   );
 
-  const setAllExpanded = (all: boolean) => {
-    const next = all ? new Set(schema.tables.map((t) => t.id)) : new Set<string>();
-    setExpanded(next);
-    arrange(next);
-  };
+  const setAllExpanded = (all: boolean) =>
+    withBusy(all ? 'Expanding all tables…' : 'Collapsing all tables…', () => {
+      const next = all ? new Set(schema.tables.map((t) => t.id)) : new Set<string>();
+      setExpanded(next);
+      arrange(next);
+    });
+  const rearrange = () => withBusy('Arranging tables…', () => arrange(expanded));
 
   const focusTable = useCallback(
     (id: string) => {
@@ -317,31 +374,43 @@ function Viewer() {
     [lineRelation, activeId, schema],
   );
 
-  const viewNodes = useMemo(
-    () =>
-      nodes.map((n) => {
-        const highlight =
-          lineRelation && n.id === lineRelation.from
-            ? new Set(lineRelation.fromColumns)
-            : lineRelation && n.id === lineRelation.to
-              ? new Set(lineRelation.toColumns)
-              : NO_COLUMNS;
-        return {
-          ...n,
-          position: focusPositions?.[n.id] ?? n.position,
-          hidden: !!focusSet && !focusSet.has(n.id),
-          data: {
-            ...n.data,
-            expanded: expanded.has(n.id),
-            active: lineRelation ? neighbours!.has(n.id) : n.id === activeId,
-            dimmed: !!neighbours && !neighbours.has(n.id),
-            fkColumns: fkColumns.get(n.id) ?? NO_COLUMNS,
-            highlightColumns: highlight,
-          },
-        };
-      }),
-    [nodes, expanded, activeId, lineRelation, neighbours, fkColumns, focusSet, focusPositions],
-  );
+  // The previous render's node objects. A node whose flags didn't change keeps its object, so hovering
+  // re-renders only the tables whose highlight changed rather than every table in a large schema.
+  const prevViewNodes = useRef(new Map<string, { source: TableNodeType; view: TableNodeType }>());
+  const viewNodes = useMemo(() => {
+    const prev = prevViewNodes.current;
+    const next = new Map<string, { source: TableNodeType; view: TableNodeType }>();
+    const out = nodes.map((n) => {
+      const highlight =
+        lineRelation && n.id === lineRelation.from
+          ? new Set(lineRelation.fromColumns)
+          : lineRelation && n.id === lineRelation.to
+            ? new Set(lineRelation.toColumns)
+            : NO_COLUMNS;
+      const position = focusPositions?.[n.id] ?? n.position;
+      const hidden = !!focusSet && !focusSet.has(n.id);
+      const data = {
+        ...n.data,
+        expanded: expanded.has(n.id),
+        active: lineRelation ? neighbours!.has(n.id) : n.id === activeId,
+        dimmed: !!neighbours && !neighbours.has(n.id),
+        fkColumns: fkColumns.get(n.id) ?? NO_COLUMNS,
+        highlightColumns: highlight,
+      };
+      const old = prev.get(n.id);
+      const same =
+        old &&
+        old.source === n &&
+        old.view.position === position &&
+        old.view.hidden === hidden &&
+        (Object.keys(data) as (keyof typeof data)[]).every((k) => old.view.data[k] === data[k]);
+      const view = same ? old.view : { ...n, position, hidden, data };
+      next.set(n.id, { source: n, view });
+      return view;
+    });
+    prevViewNodes.current = next;
+    return out;
+  }, [nodes, expanded, activeId, lineRelation, neighbours, fkColumns, focusSet, focusPositions]);
 
   const edges = useMemo<RelationEdgeType[]>(() => {
     const colors = EDGE_COLORS[theme];
@@ -456,7 +525,7 @@ function Viewer() {
           e.preventDefault();
           setDropping(false);
           const file = e.dataTransfer.files[0];
-          if (file) void importFile(file);
+          if (file) importFile(file).catch((err: Error) => notify(err.message, 5000));
         }}
       >
         {phone && (
@@ -468,7 +537,7 @@ function Viewer() {
             onToggleFocus={() => setFocus((f) => !f)}
             onExpandAll={() => setAllExpanded(true)}
             onCollapseAll={() => setAllExpanded(false)}
-            onArrange={() => arrange(expanded)}
+            onArrange={rearrange}
             dark={theme === 'dark'}
             onToggleTheme={toggleTheme}
             details={selected ? { open: detailsOpen, onToggle: toggleDetails } : null}
@@ -479,6 +548,7 @@ function Viewer() {
           />
         )}
         {dropping && <div className="drop-overlay">Drop a .sql file to visualize it</div>}
+        {busy && !welcomeOpen && <BusyOverlay label={busy} />}
         {/* While the dialog is open it shows the toast itself: a modal covers the canvas */}
         {toast && !welcomeOpen && (
           <div className="toast" role="status">
@@ -512,11 +582,16 @@ function Viewer() {
             edgesFocusable={false}
             colorMode={theme}
             minZoom={0.05}
+            // Mounting thousands of tables at once stalls the browser; render only what's in view
+            onlyRenderVisibleElements={schema.tables.length > DAGRE_LIMIT}
           >
             <RelationMarkers colors={EDGE_COLORS[theme]} />
             <Background variant={BackgroundVariant.Dots} gap={20} size={1} />
             <Controls showInteractive={false} />
-            <MiniMap pannable zoomable nodeColor={(n) => (neighbours?.has(n.id) ? EDGE_COLORS[theme].active : EDGE_COLORS[theme].idle)} />
+            {/* At this size the minimap is an unreadable smear that redraws every table on each pan */}
+            {schema.tables.length <= MINIMAP_LIMIT && (
+              <MiniMap pannable zoomable nodeColor={(n) => (neighbours?.has(n.id) ? EDGE_COLORS[theme].active : EDGE_COLORS[theme].idle)} />
+            )}
             {/* Phones get the MobileNav bar instead */}
             {!phone && (
               <>
@@ -549,7 +624,7 @@ function Viewer() {
                   <button className="btn" onClick={() => setAllExpanded(false)}>
                     Collapse all
                   </button>
-                  <button className="btn" onClick={() => arrange(expanded)} title="Re-run the automatic layout">
+                  <button className="btn" onClick={rearrange} title="Re-run the automatic layout">
                     Arrange
                   </button>
                   <ExportMenu
@@ -644,6 +719,7 @@ function Viewer() {
         onConnect={connect}
         initialTab={startup.reconnect ? 'connect' : 'sql'}
         toast={toast?.text ?? null}
+        busy={busy}
       />
     </div>
   );
@@ -677,6 +753,35 @@ function restore(): { schema: Schema; label: string; connected: boolean; reconne
     };
   }
   return { schema: sqlSchema(), label: sqlLabel, connected: false, reconnect: false, notice: null };
+}
+
+/**
+ * About 20,000 tables, which take about 8 s to show. 25 MB (~48,000 tables) took 35 s, long enough
+ * for Firefox to offer to stop the page, and 100 MB never finished, so larger input is refused up front.
+ */
+const MAX_SQL_BYTES = 10 * 1024 * 1024;
+/** Files above this are slow enough to read and parse that the steps get a loading message. */
+const LARGE_FILE_BYTES = 256 * 1024;
+
+/** Schemas past the dagre limit take long enough to draw that they get a loading message. */
+const isLarge = (schema: Schema) => schema.tables.length > DAGRE_LIMIT;
+
+/** Resolves after the browser has painted, so a loading message shows before blocking work starts. */
+const nextPaint = () => new Promise<void>((resolve) => requestAnimationFrame(() => setTimeout(resolve)));
+
+function BusyOverlay({ label }: { label: string }) {
+  return (
+    <div className="busy-overlay" role="status">
+      <span className="spinner" aria-hidden="true" />
+      {label}
+    </div>
+  );
+}
+
+function tooLarge(bytes: number) {
+  if (bytes <= MAX_SQL_BYTES) return;
+  const mb = (n: number) => `${Math.round(n / 1024 / 1024)} MB`;
+  throw new Error(`This schema is ${mb(bytes)}, more than the ${mb(MAX_SQL_BYTES)} the diagram can draw. Export only the schemas or tables you need.`);
 }
 
 /** Matches the phone layout breakpoint in styles.css. */
