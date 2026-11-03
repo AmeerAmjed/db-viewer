@@ -126,6 +126,34 @@ export const kindLabel = (kind: RelationKind, from = true) => (kind === 'one-to-
 /** Column names of `table` that take part in an outgoing foreign key. */
 export function foreignKeyColumns(schema: Schema, table: string): Set<string> {
   const out = new Set<string>();
-  for (const r of schema.relations) if (r.from === table) r.fromColumns.forEach((c) => out.add(c));
+  for (const r of relationsOf(schema, table)) if (r.from === table) r.fromColumns.forEach((c) => out.add(c));
   return out;
 }
+
+// Lookups built once per schema. Scanning a 100,000-table schema on every render (the app
+// re-renders on each pan frame) is what made large schemas crawl.
+const indexes = new WeakMap<Schema, { tables: Map<string, Table>; order: Map<string, number>; relations: Map<string, Relation[]> }>();
+function index(schema: Schema) {
+  let found = indexes.get(schema);
+  if (!found) {
+    const relations = new Map<string, Relation[]>();
+    const add = (id: string, r: Relation) => (relations.get(id) ?? relations.set(id, []).get(id)!).push(r);
+    for (const r of schema.relations) {
+      add(r.from, r);
+      if (r.to !== r.from) add(r.to, r);
+    }
+    found = {
+      tables: new Map(schema.tables.map((t) => [t.id, t])),
+      order: new Map(schema.tables.map((t, i) => [t.id, i])),
+      relations,
+    };
+    indexes.set(schema, found);
+  }
+  return found;
+}
+
+export const findTable = (schema: Schema, id: string): Table | undefined => index(schema).tables.get(id);
+/** Where `id` sits in `schema.tables`. */
+export const tableIndex = (schema: Schema, id: string): number | undefined => index(schema).order.get(id);
+/** Every relation from or to table `id`, each once. */
+export const relationsOf = (schema: Schema, id: string): readonly Relation[] => index(schema).relations.get(id) ?? [];

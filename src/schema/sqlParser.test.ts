@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import sample from './example.sql?raw';
 import { parseOpenApi } from './openApi';
-import { parseSql } from './sqlParser';
+import { parseSql, parseSqlInBatches } from './sqlParser';
 
 const table = (s: ReturnType<typeof parseSql>, id: string) => s.tables.find((t) => t.id === id)!;
 const column = (s: ReturnType<typeof parseSql>, id: string, name: string) =>
@@ -106,5 +106,19 @@ describe('parseOpenApi', () => {
     expect(column(schema, 'public.posts', 'id')).toMatchObject({ primary: true, nullable: false, type: 'uuid' });
     expect(schema.relations[0]).toMatchObject({ from: 'public.posts', to: 'public.authors', toColumns: ['id'] });
     expect(table(schema, 'public.authors').external).toBe(true);
+  });
+});
+
+describe('parseSqlInBatches', () => {
+  it('matches parseSql across batch boundaries and reports progress up to 1', async () => {
+    // More statements than one batch holds, each referencing the one before
+    const sql = Array.from({ length: 12001 }, (_, i) =>
+      i ? `CREATE TABLE t${i} (id int PRIMARY KEY, prev int REFERENCES t${i - 1});` : 'CREATE TABLE t0 (id int PRIMARY KEY);',
+    ).join('\n');
+    const progress: number[] = [];
+    const schema = await parseSqlInBatches(sql, async (done) => void progress.push(done));
+    expect(schema).toEqual(parseSql(sql));
+    expect(schema.relations).toHaveLength(12000);
+    expect(progress).toEqual([5000 / 12001, 10000 / 12001, 1]);
   });
 });

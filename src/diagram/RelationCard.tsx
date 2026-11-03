@@ -1,4 +1,4 @@
-import { kindLabel, type Relation, type Schema } from '../schema/model';
+import { findTable, kindLabel, type Relation, type Schema } from '../schema/model';
 import { CloseIcon } from '../ui/icons';
 
 const OFFSET = 14;
@@ -20,11 +20,11 @@ interface Props {
 
 /** Floating details for the hovered or pinned (clicked) line; the only relation text drawn over the diagram. */
 export default function RelationCard({ schema, relation: r, pinned, onClose, x, y, canvasWidth, canvasHeight }: Props) {
-  const from = schema.tables.find((t) => t.id === r.from);
-  const to = schema.tables.find((t) => t.id === r.to);
+  const from = findTable(schema, r.from);
+  const to = findTable(schema, r.to);
   const nullable = r.fromColumns.some((c) => from?.columns.find((col) => col.name === c)?.nullable);
   const name = (id: string) => {
-    const t = schema.tables.find((x) => x.id === id);
+    const t = findTable(schema, id);
     return !t || t.schema === 'public' ? (t?.name ?? id) : t.id;
   };
 

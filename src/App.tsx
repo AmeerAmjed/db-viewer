@@ -6,15 +6,20 @@ import {
   Panel,
   ReactFlow,
   ReactFlowProvider,
+  applyNodeChanges,
   useNodesState,
   useReactFlow,
   useViewport,
   type NodeChange,
+  type NodeDimensionChange,
   type NodePositionChange,
+  type NodeSelectionChange,
+  type XYPosition,
 } from '@xyflow/react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { copyDiagram, downloadDiagram, downloadText } from './diagram/exportImage';
-import { DAGRE_LIMIT, layoutSchema, NODE_WIDTH, nodeHeight } from './diagram/layout';
+import { DAGRE_LIMIT, HEADER_HEIGHT, layoutSchema, NODE_WIDTH, nodeHeight } from './diagram/layout';
+import Overview, { boxAt, type Box } from './diagram/Overview';
 import RelationCard from './diagram/RelationCard';
 import RelationEdge, { type RelationEdgeType } from './diagram/RelationEdge';
 import { MarkerSample, markerId, RelationMarkers } from './diagram/RelationMarkers';
@@ -25,11 +30,11 @@ import TableNode, {
   ToggleTableContext,
   type TableNodeType,
 } from './diagram/TableNode';
-import type { Schema } from './schema/model';
+import { findTable, relationsOf, tableIndex, type Relation, type Schema, type Table } from './schema/model';
 import example from './schema/example.sql?raw';
 import { subset, toDbml, toJson, toMermaid, toSql } from './schema/exporters';
 import { parseOpenApi } from './schema/openApi';
-import { parseSql } from './schema/sqlParser';
+import { parseSql, parseSqlInBatches } from './schema/sqlParser';
 import { CAN_CONNECT } from './env';
 import { load, loadSession, remove, removeSession, save, saveSession } from './storage';
 import DetailPanel from './ui/DetailPanel';
@@ -44,7 +49,14 @@ import { useMediaQuery } from './ui/useDismiss';
 const nodeTypes = { table: TableNode };
 const edgeTypes = { relation: RelationEdge };
 const NO_COLUMNS: ReadonlySet<string> = new Set();
-const MINIMAP_LIMIT = 3000;
+const DEFAULT_MIN_ZOOM = 0.05;
+/** Below this zoom a huge schema is drawn by the overview canvas: table names are unreadable anyway. */
+const OVERVIEW_ZOOM = 0.25;
+// Canvas fills can't read CSS variables: these match --node and --border in styles.css
+const OVERVIEW_COLORS = {
+  light: { table: '#ffffff', border: '#e4e4e7' },
+  dark: { table: '#1f1f1f', border: '#2e2e2e' },
+};
 // Edge colours are passed inline rather than via CSS variables: SVG strokes and fills set from
 // variables are lost when html-to-image exports the diagram.
 const EDGE_COLORS = {
@@ -71,8 +83,13 @@ export default function App() {
 function Viewer() {
   const [theme, toggleTheme] = useTheme();
   const phone = useMediaQuery(PHONE_QUERY);
-  const { fitView, screenToFlowPosition, flowToScreenPosition } = useReactFlow();
-  useViewport(); // re-render on pan/zoom so a pinned card follows its line
+  const { fitView, screenToFlowPosition, flowToScreenPosition, setCenter, setViewport } = useReactFlow();
+  // Re-renders on pan/zoom: a pinned card follows its line, and a huge schema redraws what's on screen
+  const viewport = useViewport();
+  const flowRef = useRef<HTMLDivElement>(null);
+  const flowSize = useElementSize(flowRef);
+  // Lowered for huge schemas so the whole diagram fits on screen
+  const [minZoom, setMinZoom] = useState(DEFAULT_MIN_ZOOM);
 
   const [startup] = useState(restore);
   const [sql, setSql] = useState(() => load('sv.sql') ?? '');
@@ -118,15 +135,36 @@ function Viewer() {
     if (isPhone()) setSidebarOpen(false); // show the diagram that was just loaded
   }, []);
 
+  // Whether the SQL on screen is in localStorage: a large schema can be past the storage quota
+  const [stored, setStored] = useState(() => load('sv.sql') !== null);
+  const storeSql = (text: string, label: string) => {
+    const ok = save('sv.sql', text) && save('sv.label', label);
+    if (!ok) remove('sv.sql'); // never leave a copy that doesn't match its label
+    setStored(ok);
+  };
+
   const applySql = useCallback(
-    (text: string, label = 'pasted SQL') => {
+    async (text: string, label = 'pasted SQL') => {
       // Check before touching state, so a bad paste or file leaves the current diagram alone
       tooLarge(text.length);
-      const next = parseSql(text);
-      if (!next.tables.some((t) => !t.external)) {
-        // The parser's warnings say which statement it could not read
-        const why = next.warnings.slice(0, 3).map((w) => `\n• ${w}`).join('');
-        throw new Error(`No tables found. Paste or import CREATE TABLE statements (Supabase “Schema for context”, pg_dump or migrations).${why}`);
+      let next: Schema;
+      try {
+        // A large schema is parsed in batches with its progress painted in between
+        next =
+          text.length < LARGE_FILE_BYTES
+            ? parseSql(text)
+            : await parseSqlInBatches(text, async (done) => {
+                setBusy(`Parsing ${label}… ${Math.round(done * 100)}%`);
+                await nextPaint();
+              });
+        if (!next.tables.some((t) => !t.external)) {
+          // The parser's warnings say which statement it could not read
+          const why = next.warnings.slice(0, 3).map((w) => `\n• ${w}`).join('');
+          throw new Error(`No tables found. Paste or import CREATE TABLE statements (Supabase “Schema for context”, pg_dump or migrations).${why}`);
+        }
+      } catch (err) {
+        setBusy(null);
+        throw err;
       }
       // Cleared by `arrange` once the new diagram has been drawn
       if (isLarge(next)) setBusy(`Drawing ${next.tables.length.toLocaleString()} tables…`);
@@ -134,10 +172,7 @@ function Viewer() {
       shownSql.current = { text, label };
       removeSession('sv.session');
       remove('sv.connected');
-      if (remember) {
-        save('sv.sql', text);
-        save('sv.label', label);
-      }
+      if (remember) storeSql(text, label);
       showSchema(next, label);
     },
     [showSchema, remember],
@@ -147,32 +182,30 @@ function Viewer() {
     setRemember(on);
     save('sv.remember', on ? 'on' : 'off');
     if (on && shownSql.current) {
-      save('sv.sql', shownSql.current.text);
-      save('sv.label', shownSql.current.label);
+      storeSql(shownSql.current.text, shownSql.current.label);
     } else if (!on) {
       remove('sv.sql');
       remove('sv.label');
+      setStored(false);
     }
   };
 
   const importFile = useCallback(
     async (file: File) => {
       tooLarge(file.size); // before reading: a 1 GB file.text() alone can exhaust the tab's memory
-      // Reading and parsing a big file block the page, so show what's happening before each step
-      const step = async (label: string) => {
-        if (file.size < LARGE_FILE_BYTES) return;
-        setBusy(label);
+      // Reading a big file takes a moment; applySql then reports the parsing itself
+      if (file.size >= LARGE_FILE_BYTES) {
+        setBusy(`Reading ${file.name}…`);
         await nextPaint();
-      };
+      }
+      let text: string;
       try {
-        await step(`Reading ${file.name}…`);
-        const text = await file.text();
-        await step(`Parsing ${file.name}…`);
-        applySql(text, file.name);
+        text = await file.text();
       } catch (err) {
         setBusy(null);
         throw err;
       }
+      await applySql(text, file.name);
     },
     [applySql],
   );
@@ -228,15 +261,21 @@ function Viewer() {
           data: { table, expanded: false, dimmed: false, active: false, fkColumns: NO_COLUMNS, highlightColumns: NO_COLUMNS },
         })),
       );
+      // A huge schema's tables aren't all in React Flow, so fitView can't see them: fit their bounds,
+      // first lowering the zoom limit far enough for them to fit
+      const el = flowRef.current;
+      const fit = isHuge(schema) && el ? fitBounds(schema.tables, positions, exp, el.clientWidth, el.clientHeight) : null;
+      setMinZoom(fit ? Math.min(DEFAULT_MIN_ZOOM, fit.zoom) : DEFAULT_MIN_ZOOM);
       // Let React Flow measure the new nodes before fitting. The timer only fires once the drawing
       // is done, so it also ends a loading message.
       // A phone's narrow screen would shrink a wide schema to unreadable; keep it legible and let it pan
       setTimeout(() => {
         setBusy(null);
-        fitView({ padding: 0.08, duration: 300, minZoom: isPhone() ? 0.45 : undefined });
+        if (fit) setViewport(fit);
+        else fitView({ padding: 0.08, duration: 300, minZoom: isPhone() ? 0.45 : undefined });
       }, 50);
     },
-    [schema, setNodes, fitView],
+    [schema, setNodes, fitView, setViewport],
   );
 
   useEffect(() => arrange(new Set()), [arrange]);
@@ -278,14 +317,31 @@ function Viewer() {
     });
   const rearrange = () => withBusy('Arranging tables…', () => arrange(expanded));
 
+  // Read at call time by zoomTo, which would otherwise change identity on every drag frame
+  const nodesRef = useRef(nodes);
+  nodesRef.current = nodes;
+
+  /** Centres a table at full size. On a huge schema it may not be in React Flow yet, so fitView can't. */
+  const zoomTo = useCallback(
+    (id: string) => {
+      if (!isHuge(schema)) {
+        fitView({ nodes: [{ id }], duration: 400, maxZoom: 1.1, padding: phoneSheetPadding(detailsOpen) });
+        return;
+      }
+      const n = nodeOf(schema, nodesRef.current, id);
+      if (n) setCenter(n.position.x + NODE_WIDTH / 2, n.position.y + HEADER_HEIGHT / 2, { zoom: 1, duration: 400 });
+    },
+    [schema, fitView, setCenter, detailsOpen],
+  );
+
   const focusTable = useCallback(
     (id: string) => {
       setSelectedId(id);
       if (isPhone()) setSidebarOpen(false);
       // In focus mode the focus layout effect fits the view instead
-      if (!focus) fitView({ nodes: [{ id }], duration: 400, maxZoom: 1.1, padding: phoneSheetPadding(detailsOpen) });
+      if (!focus) zoomTo(id);
     },
-    [fitView, focus, detailsOpen],
+    [zoomTo, focus],
   );
 
   /** In focus mode: the selected table plus every table it references or is referenced by. */
@@ -319,9 +375,22 @@ function Viewer() {
         if (moved.length) setFocusPositions((p) => p && { ...p, ...Object.fromEntries(moved.map((c) => [c.id, c.position!])) });
         changes = changes.filter((c) => c.type !== 'position');
       }
-      onNodesChange(changes);
+      // applyNodeChanges walks every node; on a huge schema, patch just the ones that changed
+      const patches = changes.filter(
+        (c): c is NodeDimensionChange | NodePositionChange | NodeSelectionChange =>
+          c.type === 'dimensions' || c.type === 'position' || c.type === 'select',
+      );
+      if (!isHuge(schema) || patches.length < changes.length) return onNodesChange(changes);
+      setNodes((ns) => {
+        const out = ns.slice();
+        for (const c of patches) {
+          const i = tableIndex(schema, c.id);
+          if (i !== undefined && out[i]?.id === c.id) out[i] = applyNodeChanges([c], [out[i]])[0];
+        }
+        return out;
+      });
     },
-    [focusPositions, onNodesChange],
+    [focusPositions, onNodesChange, schema, setNodes],
   );
 
   const toggleDetails = useCallback(() => {
@@ -374,13 +443,64 @@ function Viewer() {
     [lineRelation, activeId, schema],
   );
 
+  // A huge schema never goes into React Flow whole: every store update would walk all of it.
+  // Zoomed out, a canvas draws it; zoomed in, React Flow gets the tables on screen plus the tables
+  // they are related to, so lines leading off screen still have both ends.
+  const huge = isHuge(schema);
+  const overview = huge && !focusSet && viewport.zoom < OVERVIEW_ZOOM;
+  const boxes = useMemo(
+    () =>
+      overview
+        ? new Map<string, Box>(nodes.map((n) => [n.id, { ...n.position, height: nodeHeight(n.data.table, expanded.has(n.id)) }]))
+        : null,
+    [overview, nodes, expanded],
+  );
+  const onScreen = useMemo(() => {
+    if (!huge || overview || focusSet || !flowSize.width) return null;
+    const { x, y, zoom } = viewport;
+    // A margin so tables just past the edge are already mounted when a pan brings them in
+    const margin = 200 / zoom;
+    const left = -x / zoom - margin;
+    const top = -y / zoom - margin;
+    const right = left + flowSize.width / zoom + 2 * margin;
+    const bottom = top + flowSize.height / zoom + 2 * margin;
+    const ids = new Set<string>();
+    const visible: string[] = [];
+    for (const n of nodes) {
+      const { x: nx, y: ny } = n.position;
+      if (nx > right || nx + NODE_WIDTH < left || ny > bottom || ny + nodeHeight(n.data.table, expanded.has(n.id)) < top) continue;
+      visible.push(n.id);
+      ids.add(n.id);
+    }
+    const relations = new Map<string, Relation>();
+    for (const id of visible) {
+      for (const r of relationsOf(schema, id)) {
+        relations.set(r.id, r);
+        ids.add(r.from);
+        ids.add(r.to);
+      }
+    }
+    return { ids, relations: [...relations.values()] };
+  }, [huge, overview, focusSet, flowSize, viewport, nodes, expanded, schema]);
+  // The nodes and relations handed to React Flow
+  const flowNodes = useMemo(() => {
+    if (!huge) return nodes;
+    const ids = focusSet ?? onScreen?.ids;
+    return ids ? [...ids].flatMap((id) => nodeOf(schema, nodes, id) ?? []) : [];
+  }, [huge, schema, nodes, focusSet, onScreen]);
+  const flowRelations = useMemo(() => {
+    if (!huge) return schema.relations;
+    if (focusSet) return selectedId ? relationsOf(schema, selectedId) : [];
+    return onScreen?.relations ?? [];
+  }, [huge, schema, focusSet, selectedId, onScreen]);
+
   // The previous render's node objects. A node whose flags didn't change keeps its object, so hovering
   // re-renders only the tables whose highlight changed rather than every table in a large schema.
   const prevViewNodes = useRef(new Map<string, { source: TableNodeType; view: TableNodeType }>());
   const viewNodes = useMemo(() => {
     const prev = prevViewNodes.current;
     const next = new Map<string, { source: TableNodeType; view: TableNodeType }>();
-    const out = nodes.map((n) => {
+    const out = flowNodes.map((n) => {
       const highlight =
         lineRelation && n.id === lineRelation.from
           ? new Set(lineRelation.fromColumns)
@@ -410,11 +530,11 @@ function Viewer() {
     });
     prevViewNodes.current = next;
     return out;
-  }, [nodes, expanded, activeId, lineRelation, neighbours, fkColumns, focusSet, focusPositions]);
+  }, [flowNodes, expanded, activeId, lineRelation, neighbours, fkColumns, focusSet, focusPositions]);
 
   const edges = useMemo<RelationEdgeType[]>(() => {
     const colors = EDGE_COLORS[theme];
-    return schema.relations.map((r) => {
+    return flowRelations.map((r) => {
       const lit = lineRelation ? r.id === lineRelation.id : !!activeId && (r.from === activeId || r.to === activeId);
       const anyLit = !!lineRelation || !!activeId;
       const state = lit ? 'active' : 'idle';
@@ -435,7 +555,7 @@ function Viewer() {
         hidden: !!focusSet && r.from !== selectedId && r.to !== selectedId,
       };
     });
-  }, [schema, activeId, lineRelation, theme, focusSet, selectedId]);
+  }, [flowRelations, activeId, lineRelation, theme, focusSet, selectedId]);
 
   const trackEdge = (e: React.MouseEvent, id: string) => {
     if (!canHover()) return; // a tap would leave a hover card stuck open; taps pin instead
@@ -443,7 +563,8 @@ function Viewer() {
     setHoveredEdge({ id, x: e.clientX - rect.left, y: e.clientY - rect.top });
   };
 
-  const selected = schema.tables.find((t) => t.id === selectedId);
+  const selected = selectedId ? findTable(schema, selectedId) : undefined;
+  const ownTables = useMemo(() => schema.tables.filter((t) => !t.external).length, [schema]);
 
   const [toast, setToast] = useState<{ text: string; ms: number } | null>(
     startup.notice ? { text: startup.notice, ms: 7000 } : null,
@@ -568,9 +689,12 @@ function Viewer() {
             }}
             onNodeMouseEnter={(_, n) => canHover() && setHoveredId(n.id)}
             onNodeMouseLeave={() => setHoveredId(null)}
-            onPaneClick={() => {
-              setSelectedId(null);
+            onPaneClick={(e) => {
               setPinnedEdge(null);
+              // The overview canvas lets clicks through to the pane; a click on one of its tables opens it
+              const hit = boxes && boxAt(boxes, screenToFlowPosition({ x: e.clientX, y: e.clientY }));
+              setSelectedId(hit || null);
+              if (hit) zoomTo(hit);
             }}
             onEdgeClick={(e, edge) =>
               setPinnedEdge((p) => (p?.id === edge.id ? null : { id: edge.id, flow: screenToFlowPosition({ x: e.clientX, y: e.clientY }) }))
@@ -581,15 +705,29 @@ function Viewer() {
             nodesConnectable={false}
             edgesFocusable={false}
             colorMode={theme}
-            minZoom={0.05}
-            // Mounting thousands of tables at once stalls the browser; render only what's in view
-            onlyRenderVisibleElements={schema.tables.length > DAGRE_LIMIT}
+            minZoom={minZoom}
+            ref={flowRef}
+            // Mounting thousands of tables at once stalls the browser; render only what's in view.
+            // A huge schema is already cut down to what's on screen, and the related tables off
+            // screen must still render for the lines to them to be drawn.
+            onlyRenderVisibleElements={isLarge(schema) && !huge}
           >
             <RelationMarkers colors={EDGE_COLORS[theme]} />
             <Background variant={BackgroundVariant.Dots} gap={20} size={1} />
+            {boxes && (
+              <Overview
+                boxes={boxes}
+                relations={schema.relations}
+                viewport={viewport}
+                width={flowSize.width}
+                height={flowSize.height}
+                lit={neighbours}
+                colors={{ ...OVERVIEW_COLORS[theme], ...EDGE_COLORS[theme] }}
+              />
+            )}
             <Controls showInteractive={false} />
             {/* At this size the minimap is an unreadable smear that redraws every table on each pan */}
-            {schema.tables.length <= MINIMAP_LIMIT && (
+            {!huge && (
               <MiniMap pannable zoomable nodeColor={(n) => (neighbours?.has(n.id) ? EDGE_COLORS[theme].active : EDGE_COLORS[theme].idle)} />
             )}
             {/* Phones get the MobileNav bar instead */}
@@ -708,7 +846,7 @@ function Viewer() {
         onClose={() => setWelcomeOpen(false)}
         current={
           schema.tables.length
-            ? { label: sourceLabel, tables: schema.tables.filter((t) => !t.external).length, saved: remember && shownSql.current !== null }
+            ? { label: sourceLabel, tables: ownTables, saved: remember && stored && shownSql.current !== null }
             : null
         }
         remember={remember}
@@ -756,15 +894,52 @@ function restore(): { schema: Schema; label: string; connected: boolean; reconne
 }
 
 /**
- * About 20,000 tables, which take about 8 s to show. 25 MB (~48,000 tables) took 35 s, long enough
- * for Firefox to offer to stop the page, and 100 MB never finished, so larger input is refused up front.
+ * About 250,000 tables. Past that, reading the file and holding the parsed schema take more memory
+ * than a tab reliably has, so larger input is refused up front.
  */
-const MAX_SQL_BYTES = 10 * 1024 * 1024;
+const MAX_SQL_BYTES = 128 * 1024 * 1024;
 /** Files above this are slow enough to read and parse that the steps get a loading message. */
 const LARGE_FILE_BYTES = 256 * 1024;
 
 /** Schemas past the dagre limit take long enough to draw that they get a loading message. */
 const isLarge = (schema: Schema) => schema.tables.length > DAGRE_LIMIT;
+/**
+ * Schemas too big to hand to React Flow whole (see `flowNodes`). Past this the minimap goes too: it
+ * would be an unreadable smear that redraws every table on each pan.
+ */
+const isHuge = (schema: Schema) => schema.tables.length > 3000;
+
+/** The viewport that fits every table on a `width` × `height` screen, at most at full size. */
+function fitBounds(tables: Table[], positions: Record<string, XYPosition>, expanded: ReadonlySet<string>, width: number, height: number) {
+  let [minX, minY, maxX, maxY] = [Infinity, Infinity, -Infinity, -Infinity];
+  for (const t of tables) {
+    const p = positions[t.id];
+    minX = Math.min(minX, p.x);
+    minY = Math.min(minY, p.y);
+    maxX = Math.max(maxX, p.x + NODE_WIDTH);
+    maxY = Math.max(maxY, p.y + nodeHeight(t, expanded.has(t.id)));
+  }
+  const zoom = Math.min(1, (width * 0.92) / (maxX - minX), (height * 0.92) / (maxY - minY));
+  return { zoom, x: (width - (maxX - minX) * zoom) / 2 - minX * zoom, y: (height - (maxY - minY) * zoom) / 2 - minY * zoom };
+}
+
+/** The node for table `id`: nodes are in `schema.tables` order, so no search is needed. */
+function nodeOf(schema: Schema, nodes: TableNodeType[], id: string): TableNodeType | undefined {
+  const i = tableIndex(schema, id);
+  const n = i === undefined ? undefined : nodes[i];
+  return n?.id === id ? n : undefined; // nodes still from the previous schema until arrange runs
+}
+
+function useElementSize(ref: React.RefObject<HTMLElement | null>) {
+  const [size, setSize] = useState({ width: 0, height: 0 });
+  useEffect(() => {
+    const el = ref.current!;
+    const observer = new ResizeObserver(() => setSize({ width: el.clientWidth, height: el.clientHeight }));
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [ref]);
+  return size;
+}
 
 /** Resolves after the browser has painted, so a loading message shows before blocking work starts. */
 const nextPaint = () => new Promise<void>((resolve) => requestAnimationFrame(() => setTimeout(resolve)));
@@ -801,7 +976,7 @@ const phoneSheetPadding = (sheetOpen: boolean) =>
 
 function relatives(schema: Schema, id: string): Set<string> {
   const set = new Set([id]);
-  for (const r of schema.relations) {
+  for (const r of relationsOf(schema, id)) {
     if (r.from === id) set.add(r.to);
     if (r.to === id) set.add(r.from);
   }

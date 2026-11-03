@@ -15,7 +15,7 @@ interface Props {
   selectedId: string | null;
   onSelect: (id: string) => void;
   /** Throws when the SQL holds no tables. */
-  onApplySql: (sql: string) => void;
+  onApplySql: (sql: string) => Promise<void>;
   onLoadExample: () => void;
   onImportFile: (file: File) => Promise<void>;
   onConnect: (url: string, key: string) => Promise<void>;
@@ -24,7 +24,7 @@ interface Props {
 export default function Sidebar(props: Props) {
   const { schema, sourceLabel } = props;
   const [tab, setTab] = useState<Tab>(() => (schema.tables.length ? 'tables' : 'sql'));
-  const own = schema.tables.filter((t) => !t.external).length;
+  const own = useMemo(() => schema.tables.filter((t) => !t.external).length, [schema]);
 
   // A newly loaded schema (from any source, e.g. the diagram's "load an example" link) shows its tables
   useEffect(() => {
@@ -59,8 +59,8 @@ export default function Sidebar(props: Props) {
         <SqlTab
           key={props.sql}
           {...props}
-          onApplySql={(sql) => {
-            props.onApplySql(sql); // throws on text without tables, keeping the SQL tab open
+          onApplySql={async (sql) => {
+            await props.onApplySql(sql); // throws on text without tables, keeping the SQL tab open
             setTab('tables');
           }}
           onLoadExample={() => {
@@ -86,6 +86,10 @@ export default function Sidebar(props: Props) {
 }
 
 const LIST_LIMIT = 500;
+// localeCompare builds its comparison rules on every call: seconds over 100,000 names
+const collator = new Intl.Collator();
+// A textarea holding megabytes of text takes seconds to lay out; the loaded SQL isn't shown past this
+const EDIT_LIMIT = 1024 * 1024;
 
 function TablesTab({ schema, selectedId, onSelect }: Props) {
   const [query, setQuery] = useState('');
@@ -100,11 +104,14 @@ function TablesTab({ schema, selectedId, onSelect }: Props) {
   }, [schema]);
 
   const sorted = useMemo(
-    () => [...schema.tables].sort((a, b) => Number(a.external) - Number(b.external) || a.name.localeCompare(b.name)),
+    () => [...schema.tables].sort((a, b) => Number(a.external) - Number(b.external) || collator.compare(a.name, b.name)),
     [schema],
   );
   const q = query.trim().toLowerCase();
-  const matches = q ? sorted.filter((t) => t.id.includes(q) || t.columns.some((c) => c.name.toLowerCase().includes(q))) : sorted;
+  const matches = useMemo(
+    () => (q ? sorted.filter((t) => t.id.includes(q) || t.columns.some((c) => c.name.toLowerCase().includes(q))) : sorted),
+    [sorted, q],
+  );
   // Tens of thousands of rows stall the page; past the cap, searching narrows the list
   const tables = matches.slice(0, LIST_LIMIT);
 
@@ -148,7 +155,7 @@ function TablesTab({ schema, selectedId, onSelect }: Props) {
 export const SQL_FILE_TYPES = '.sql,.psql,.pgsql,.txt,text/plain,application/sql';
 
 function SqlTab({ sql, schema, onApplySql, onLoadExample, onImportFile }: Props) {
-  const [draft, setDraft] = useState(sql);
+  const [draft, setDraft] = useState(sql.length > EDIT_LIMIT ? '' : sql);
   const [error, setError] = useState<string | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const apply = async (load: () => void | Promise<void>) => {
@@ -176,7 +183,11 @@ function SqlTab({ sql, schema, onApplySql, onLoadExample, onImportFile }: Props)
         className="sql-input"
         spellCheck={false}
         value={draft}
-        placeholder="CREATE TABLE public.users (…);"
+        placeholder={
+          sql.length > EDIT_LIMIT
+            ? `The loaded SQL (${Math.round(sql.length / 1024 / 1024)} MB) is too large to show here. Paste SQL to replace it.`
+            : 'CREATE TABLE public.users (…);'
+        }
         onChange={(e) => {
           setDraft(e.target.value);
           setError(null);

@@ -1,4 +1,4 @@
-import { kindLabel, type Relation, type Schema, type Table } from '../schema/model';
+import { findTable, kindLabel, relationsOf, type Relation, type Schema, type Table } from '../schema/model';
 import { ArrowRight, CloseIcon, ColumnIcon } from './icons';
 
 interface Props {
@@ -12,8 +12,8 @@ interface Props {
 
 /** Everything about one table: full column details plus its relations in both directions. */
 export default function DetailPanel({ schema, table, expanded, onToggleExpanded, onSelect, onClose }: Props) {
-  const outgoing = schema.relations.filter((r) => r.from === table.id);
-  const incoming = schema.relations.filter((r) => r.to === table.id);
+  const outgoing = relationsOf(schema, table.id).filter((r) => r.from === table.id);
+  const incoming = relationsOf(schema, table.id).filter((r) => r.to === table.id);
   const fkColumns = new Set(outgoing.flatMap((r) => r.fromColumns));
 
   return (
@@ -111,6 +111,6 @@ function RelationList(props: {
 }
 
 const label = (schema: Schema, id: string) => {
-  const t = schema.tables.find((x) => x.id === id);
+  const t = findTable(schema, id);
   return !t ? id : t.schema === 'public' ? t.name : t.id;
 };

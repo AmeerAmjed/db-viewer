@@ -11,7 +11,7 @@ interface Props {
   remember: boolean;
   onRememberChange: (on: boolean) => void;
   /** Throws when the SQL holds no tables. */
-  onApplySql: (sql: string) => void;
+  onApplySql: (sql: string) => Promise<void>;
   onLoadExample: () => void;
   onImportFile: (file: File) => Promise<void>;
   onConnect: (url: string, key: string) => Promise<void>;

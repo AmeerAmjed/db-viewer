@@ -7,11 +7,13 @@ export function load(key: string): string | null {
   }
 }
 
-export function save(key: string, value: string) {
+/** False when the value wasn't stored: storage is blocked, or the value is past the quota. */
+export function save(key: string, value: string): boolean {
   try {
     localStorage.setItem(key, value);
+    return true;
   } catch {
-    // ignore
+    return false;
   }
 }
 

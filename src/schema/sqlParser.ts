@@ -6,25 +6,48 @@ import { buildSchema, newColumn, tableId, type Column, type PendingForeignKey, t
  * statement is ignored. This is a tolerant reader, not a validator.
  */
 export function parseSql(sql: string): Schema {
+  const parser = statementParser();
+  for (const stmt of splitStatements(sql)) parser.add(stmt);
+  return parser.finish();
+}
+
+const BATCH = 5000;
+
+/**
+ * `parseSql` in batches of statements, awaiting `onProgress` (with the fraction done) between them.
+ * A 100 MB schema takes seconds to parse; yielding keeps that from being one long task, which is
+ * what makes Firefox offer to stop the page.
+ */
+export async function parseSqlInBatches(sql: string, onProgress: (done: number) => Promise<void>): Promise<Schema> {
+  const statements = splitStatements(sql);
+  const parser = statementParser();
+  for (let i = 0; i < statements.length; i += BATCH) {
+    for (let j = i; j < Math.min(i + BATCH, statements.length); j++) parser.add(statements[j]);
+    await onProgress(Math.min(1, (i + BATCH) / statements.length));
+  }
+  return parser.finish();
+}
+
+function statementParser() {
   const tables = new Map<string, Table>();
   const fks: PendingForeignKey[] = [];
   const warnings: string[] = [];
-
-  for (const stmt of splitStatements(sql)) {
-    try {
-      const create = CREATE_TABLE.exec(stmt);
-      if (create) {
-        parseCreateTable(stmt.slice(create[0].length), tables, fks);
-        continue;
+  return {
+    add(stmt: string) {
+      try {
+        const create = CREATE_TABLE.exec(stmt);
+        if (create) {
+          parseCreateTable(stmt.slice(create[0].length), tables, fks);
+          return;
+        }
+        const alter = ALTER_TABLE.exec(stmt);
+        if (alter) parseAlterTable(stmt.slice(alter[0].length), tables, fks, warnings);
+      } catch (err) {
+        warnings.push(`Skipped statement "${stmt.slice(0, 60)}…": ${(err as Error).message}`);
       }
-      const alter = ALTER_TABLE.exec(stmt);
-      if (alter) parseAlterTable(stmt.slice(alter[0].length), tables, fks, warnings);
-    } catch (err) {
-      warnings.push(`Skipped statement "${stmt.slice(0, 60)}…": ${(err as Error).message}`);
-    }
-  }
-
-  return buildSchema(tables, fks, warnings);
+    },
+    finish: () => buildSchema(tables, fks, warnings),
+  };
 }
 
 const CREATE_TABLE =

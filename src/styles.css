@@ -340,6 +340,15 @@ code,
   pointer-events: none;
 }
 
+/* Above the background dots, below the toolbar panels; clicks pass through to the pane */
+.overview {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 3;
+  pointer-events: none;
+}
+
 .busy-overlay {
   position: absolute;
   inset: 0;
